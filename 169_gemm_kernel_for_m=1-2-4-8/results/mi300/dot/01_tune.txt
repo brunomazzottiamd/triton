@@ -1,0 +1,11 @@
+Tuning 4 gemm sizes starts at: 2024-07-26 12:29:54.630103
+SIZE: 1 8192 28672 TN nConfigs: 176 TFLOPS: 3.68 time(us): 127.55 best_config: BM16_BN16_BK256_GM1_SK1_nW2_nS0_EU0_kP1_mfma16
+>>> Elapsed time: 0:04:10.559844 = 0:00:09.447371 (compile) + 0:04:00.392062 (profile) + 0:00:00.715128 (post processing)
+SIZE: 1 6144 6144 TN nConfigs: 176 TFLOPS: 4.11 time(us): 18.36 best_config: BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16
+>>> Elapsed time: 0:01:57.544939 = 0:00:06.003742 (compile) + 0:01:50.826209 (profile) + 0:00:00.710805 (post processing)
+SIZE: 1 4096 4096 TN nConfigs: 176 TFLOPS: 2.50 time(us): 13.41 best_config: BM16_BN16_BK256_GM1_SK1_nW4_nS0_EU0_kP1_mfma16
+>>> Elapsed time: 0:01:58.454027 = 0:00:06.032279 (compile) + 0:01:51.647823 (profile) + 0:00:00.769890 (post processing)
+SIZE: 2 16384 16384 TN nConfigs: 176 TFLOPS: 7.27 time(us): 147.76 best_config: BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP1_mfma16
+>>> Elapsed time: 0:04:03.514069 = 0:00:08.748108 (compile) + 0:03:54.017056 (profile) + 0:00:00.743054 (post processing)
+Tuning ends at: 2024-07-26 12:42:04.709254
+Total tuning time (h:m:s): 0:12:10.079151
