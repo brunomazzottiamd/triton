@@ -121,15 +121,19 @@ def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
             continue
         SPLIT_K = config.get("SPLIT_K")
         GROUP_M = config.get("GROUP_SIZE_M")
-        if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
-            continue
-        if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
-            continue
+        # Commented out to test `BLOCK_SIZE_M < 16`, i.e. multiply-reduce implementation.
+        # if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
+        #     continue
+        # if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
+        #     continue
         if N <= matrix_instr_nonkdim and BLOCK_SIZE_N != matrix_instr_nonkdim:
             continue
         # Skip BLOCK_SIZE that is too large compare to M/N
         # unless BLOCK_SIZE is already small enough
-        if BLOCK_SIZE_M > M * 2 and BLOCK_SIZE_M != 16:
+        # For dot implementation use this `if` statement:
+        # if BLOCK_SIZE_M > M * 2 and BLOCK_SIZE_M != 16:
+        # For multiply-reduce implementation use this `if` statement:
+        if BLOCK_SIZE_M > M * 2:
             continue
         if BLOCK_SIZE_N > N * 2 and BLOCK_SIZE_N != 16:
             continue
