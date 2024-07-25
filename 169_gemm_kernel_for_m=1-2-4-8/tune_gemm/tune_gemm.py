@@ -412,7 +412,7 @@ def gen_rotating_tensors(M,
                                     2,
                                     init_type,
                                     device='cuda')
-            bias.append(bs.squeeze())
+            bias.append(bs.squeeze(dim=1))
 
     in_outs = {
         "rotating_num": block_count,
@@ -487,8 +487,8 @@ def test_correctness(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c,
                                     2,
                                     init_type,
                                     device='cuda')
-        bias = bias.squeeze()
-        bias_fp16 = bias.squeeze()
+        bias = bias.squeeze(dim=1)
+        bias_fp16 = bias.squeeze(dim=1)
     # Allocates output.
     c = torch.zeros((M, N),
                     device=a.device,
