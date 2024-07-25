@@ -48,7 +48,25 @@ def matmul_kernel(
         else:
             a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
             b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
-        accumulator += tl.dot(a, b)
+        # ======================================================================
+        # For dot implementation use this piece of code:
+        # ----------------------------------------------------------------------
+        # accumulator += tl.dot(a, b)
+        # ======================================================================
+        # For multiply-reduce implementation use this piece of code:
+        # ----------------------------------------------------------------------
+        # TODO: `min_dot_size` isn't always (16, 16, 16), it's architecture
+        #       dependent and data type dependent. Please check this:
+        #       https://github.com/triton-lang/triton/blob/main/third_party/amd/backend/compiler.py#L14
+        #       Q: How can we implement this `if` statement more precisely?
+        #       A: Maybe we can use an approach similar to `EVEN_K`.
+        if (BLOCK_SIZE_M < 16 or BLOCK_SIZE_N < 16) or BLOCK_SIZE_K < 16:
+            a = tl.reshape(a, (BLOCK_SIZE_M, BLOCK_SIZE_K, 1)).to(acc_dtype)
+            b = tl.reshape(b, (1, BLOCK_SIZE_K, BLOCK_SIZE_N)).to(acc_dtype)
+            accumulator += tl.sum(a * b, axis=1)
+        else:
+            accumulator += tl.dot(a, b)
+        # ======================================================================
         a_ptrs += BLOCK_SIZE_K * SPLIT_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * SPLIT_K * stride_bk
     c = accumulator.to(c_ptr.type.element_ty)
