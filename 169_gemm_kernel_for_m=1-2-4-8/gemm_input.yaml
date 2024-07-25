@@ -1,0 +1,6 @@
+# Shapes suggested by Vinayak:
+# https://github.com/ROCm/triton-internal/issues/169#issuecomment-2237278003
+- {'M': 1, 'N': 8192, 'K': 28672, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+- {'M': 1, 'N': 6144, 'K': 6144, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+- {'M': 1, 'N': 4096, 'K': 4096, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+- {'M': 2, 'N': 16384, 'K': 16384, 'rowMajorA': 'T', 'rowMajorB': 'N'}
