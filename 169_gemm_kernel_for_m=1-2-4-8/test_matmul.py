@@ -98,7 +98,6 @@ def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: 
         b_n,
         b_k,
         # Other kernel parameters
-        1,  # group_m, always 1
         bias is not None,  # bias
         k % b_k == 0,  # even_k
         # Compiler / runtime parameters
