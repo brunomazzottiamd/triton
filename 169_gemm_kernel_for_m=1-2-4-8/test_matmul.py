@@ -13,7 +13,7 @@ import torch
 from torch import Tensor
 import triton
 
-from tune_gemm.matmul_kernel import matmul_kernel
+from matmul_kernel import matmul_kernel
 
 DTYPES: list[str] = ["f16", "f32"]
 SMALL_SIZES: list[int] = list(range(1, 17))
@@ -71,9 +71,8 @@ def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: 
     b_m: int = triton_block_size(m, block_m)
     b_n: int = triton_block_size(n, block_n)
     b_k: int = triton_block_size(k, block_k)
-    split_k: int = 1  # split_k is always 1
 
-    grid: tuple[int, int] = triton.cdiv(m, b_m) * triton.cdiv(n, b_n), split_k
+    grid: tuple[int, int] = triton.cdiv(m, b_m) * triton.cdiv(n, b_n), 1
     c: Tensor = torch.empty((m, n), device=a.device, dtype=a.dtype)
 
     matmul_kernel[grid](
@@ -99,8 +98,6 @@ def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: 
         b_n,
         b_k,
         # Other kernel parameters
-        split_k,
-        1,  # group_m, always 1
         bias is not None,  # bias
         k % b_k == 0,  # even_k
         # Compiler / runtime parameters
