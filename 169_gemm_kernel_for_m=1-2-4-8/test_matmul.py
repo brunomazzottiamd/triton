@@ -180,16 +180,23 @@ def test_matmul(dtype: str, m: int, n: int, k: int, has_bias: bool, num_warps: i
     check_matmul(dtype, m, n, k, has_bias=has_bias, num_warps=num_warps, kpack=kpack)
 
 
-def run_config(m: int, n: int, k: int) -> None:
-    configs: dict[tuple[int, int, int], dict[str, Any]] = {
-        (1, 8192, 8192): {"block_m": 1, "block_n": 64, "block_k": 256, "num_warps": 8, "kpack": 2},
+def run_config(config_name: str, m: int, n: int, k: int) -> None:
+    assert config_name in ["tl_dot", "multreduce"]
+    tl_dot_configs: dict[tuple[int, int, int], dict[str, Any]] = {
+        (1, 8192, 28672): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 2, "kpack": 1},
+        (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
+        (1, 4096, 4096): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 4, "kpack": 1},
+        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 1, "kpack": 1},
+    }
+    multreduce_configs: dict[tuple[int, int, int], dict[str, Any]] = {
+        (1, 8192, 28672): {"block_m": 1, "block_n": 64, "block_k": 256, "num_warps": 8, "kpack": 2},
         (1, 6144, 6144): {"block_m": 1, "block_n": 64, "block_k": 256, "num_warps": 8, "kpack": 2},
         (1, 4096, 4096): {"block_m": 1, "block_n": 64, "block_k": 256, "num_warps": 8, "kpack": 1},
         (2, 16384, 16384): {"block_m": 1, "block_n": 64, "block_k": 256, "num_warps": 8, "kpack": 2},
     }
     mnk: tuple[int, int, int] = (m, n, k)
     try:
-        check_matmul("f16", m, n, k, **configs[mnk])
+        check_matmul("f16", m, n, k, **(tl_dot_configs if config_name == "tl_dot" else multreduce_configs)[mnk])
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
 
@@ -199,9 +206,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "mode", type=str, choices=["single", "full"],
         help="test mode, use 'full' for the complete test and 'single' for a specific size configuration")
-    parser.add_argument("-m", type=int, required=False, help="rows of matrix A")
-    parser.add_argument("-n", type=int, required=False, help="columns of matrix A / rows of matrix B")
-    parser.add_argument("-k", type=int, required=False, help="columns of matrix B")
+    parser.add_argument("-d", "--dot", choices=["tl_dot", "multreduce"], default="multreduce",
+                        help="dot product implementation")
+    parser.add_argument("-m", type=int, help="rows of matrix A")
+    parser.add_argument("-n", type=int, help="columns of matrix A / rows of matrix B")
+    parser.add_argument("-k", type=int, help="columns of matrix B")
     args: argparse.Namespace = parser.parse_args()
     try:
         if args.mode == "single":
@@ -224,7 +233,7 @@ def main() -> None:
     if args.mode == "full":
         sys.exit(pytest.main(["--quiet", "--exitfirst"]))
 
-    run_config(args.m, args.n, args.k)
+    run_config(args.dot, args.m, args.n, args.k)
 
 
 if __name__ == "__main__":
