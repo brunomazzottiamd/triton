@@ -6,6 +6,17 @@ remove() {
     rm --recursive --force "${@}"
 }
 
+copy_kernel_file() {
+    kernel_file_desc="${1}"
+    kernel_file_ext="${2}"
+    triton_cache_dir="${3}"
+    output_dir="${4}"
+    echo "Getting kernel ${kernel_file_desc}..."
+    kernel_file=$(find "${triton_cache_dir}" -name "*.${kernel_file_ext}" | head -1)
+    echo "Kernel ${kernel_file_desc} is [${kernel_file}]."
+    cp "${kernel_file}" "${output_dir}"
+}
+
 ### Loop over dot product implementations
 
 declare -a dots=(
@@ -59,15 +70,12 @@ for dot in "${dots[@]}"; do
 
     echo "Kernel dispatch ID is ${dispatch_id}."
 
-    ### Get kernel assembly code
+    ### Get kernel IRs and assembly code
 
-    echo 'Getting kernel assembly code...'
+    copy_kernel_file 'Triton IR' 'ttir' "${triton_cache_dir}" "${output_dir}"
+    copy_kernel_file 'Triton GPU IR' 'ttgir' "${triton_cache_dir}" "${output_dir}"
+    copy_kernel_file 'assembly' 'amdgcn' "${triton_cache_dir}" "${output_dir}"
 
-    kernel_asm=$(find "${triton_cache_dir}" -name '*.amdgcn' | head -1)
-
-    echo "Kernel assembly code is [${kernel_asm}]."
-
-    cp "${kernel_asm}" "${output_dir}"
     # Copy reference Python code too.
     cp "${script_dir}/matmul_kernel.py" "${output_dir}"
 
