@@ -10,8 +10,8 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr, M, N, K, stride_am, stride_ak, 
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
     pid_m = pid // num_pid_n
     pid_n = pid % num_pid_n
-    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))
+    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
     a_ptrs = a_ptr + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
@@ -27,12 +27,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr, M, N, K, stride_am, stride_ak, 
         else:
             a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0)
             b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0)
-        if (BLOCK_SIZE_M < 16 or BLOCK_SIZE_N < 16) or BLOCK_SIZE_K < 16:
-            a = tl.reshape(a, (BLOCK_SIZE_M, BLOCK_SIZE_K, 1)).to(acc_dtype)
-            b = tl.reshape(b, (1, BLOCK_SIZE_K, BLOCK_SIZE_N)).to(acc_dtype)
-            accumulator += tl.sum(a * b, axis=1)
-        else:
-            accumulator += tl.dot(a, b)
+        accumulator += tl.dot(a, b)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
     c = accumulator.to(c_ptr.type.element_ty)
