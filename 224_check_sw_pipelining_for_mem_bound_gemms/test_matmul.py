@@ -14,7 +14,6 @@ import triton
 
 from matmul_kernel import matmul_kernel
 
-DTYPES: list[str] = ["f16", "f32"]
 DEFAULT_HAS_BIAS: bool = False
 
 # Default values are listed in this source file:
@@ -23,18 +22,13 @@ DEFAULT_NUM_WARPS: int = 4
 DEFAULT_KPACK: int = 1
 
 
-def gen_input(dtype: str, m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS,
+def gen_input(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS,
               device: str = "cuda") -> tuple[Tensor, Tensor, Optional[Tensor]]:
     assert m > 0
     assert n > 0
     assert k > 0
-    assert dtype in DTYPES
 
-    a: Tensor = torch.randn(
-        (m, k),
-        dtype={"f16": torch.float16, "f32": torch.float32}[dtype],
-        device=device,
-    )
+    a: Tensor = torch.randn((m, k), dtype=torch.float16, device=device)
     b: Tensor = torch.randn((k, n), dtype=a.dtype, device=a.device)
     bias: Optional[Tensor] = torch.randn(m, dtype=a.dtype, device=a.device) if has_bias else None
 
@@ -142,25 +136,25 @@ def matmul(engine: str, a: Tensor, b: Tensor, bias: Optional[Tensor] = None, blo
                          kpack=kpack)
 
 
-def run_matmul(dtype: str, m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
+def run_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
                block_n: Optional[int] = None, block_k: Optional[int] = None, num_warps: Optional[int] = None,
                kpack: Optional[int] = None) -> tuple[Tensor, Tensor]:
     a: Tensor
     b: Tensor
     bias: Optional[Tensor]
-    a, b, bias = gen_input(dtype, m, n, k, has_bias=has_bias)
+    a, b, bias = gen_input(m, n, k, has_bias=has_bias)
     c_torch: Tensor = matmul("torch", a, b, bias=bias)
     c_triton: Tensor = matmul("triton", a, b, bias=bias, block_m=block_m, block_n=block_n, block_k=block_k,
                               num_warps=num_warps, kpack=kpack)
     return c_torch, c_triton
 
 
-def check_matmul(dtype: str, m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
+def check_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
                  block_n: Optional[int] = None, block_k: Optional[int] = None, num_warps: Optional[int] = None,
                  kpack: Optional[int] = None) -> None:
     c_torch: Tensor
     c_triton: Tensor
-    c_torch, c_triton = run_matmul(dtype, m, n, k, has_bias=has_bias, block_m=block_m, block_n=block_n, block_k=block_k,
+    c_torch, c_triton = run_matmul(m, n, k, has_bias=has_bias, block_m=block_m, block_n=block_n, block_k=block_k,
                                    num_warps=num_warps, kpack=kpack)
     assert torch.allclose(c_torch, c_triton, atol=1e-3, rtol=1e-2)
 
@@ -174,7 +168,7 @@ def run_config(m: int, n: int, k: int) -> None:
     }
     mnk: tuple[int, int, int] = (m, n, k)
     try:
-        check_matmul("f16", m, n, k, **(configs)[mnk])
+        check_matmul(m, n, k, **(configs)[mnk])
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
 
