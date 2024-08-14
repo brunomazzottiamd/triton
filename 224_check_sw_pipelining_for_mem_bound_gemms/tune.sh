@@ -15,6 +15,22 @@ join_by() {
   fi
 }
 
+get_gpu_ids() {
+    local ids
+    case "$(hostname)" in
+        'sc-am11-smc-01')
+            ids=(0 1 2 3)
+            ;;
+        'smc300x-ccs-aus-GPUF292')
+            ids=(5 6 7)
+            ;;
+        *)
+            ids=(0)
+            ;;
+    esac
+    join_by , "${ids[@]}"
+}
+
 ### Create empty results directory
 
 results_dir=$(trim_string "${1}")
@@ -30,11 +46,11 @@ mkdir --parents "${results_dir}"
 
 ### Tune GEMM
 
-echo 'Tuning...'
+gpu_ids=$(get_gpu_ids)
+echo "Tuning with GPUs [${gpu_ids}]..."
 
 tune_gemm_py="${script_dir}/tune_gemm/tune_gemm.py"
 tuning_results="${results_dir}/02_gemm_output.yaml"
-gpu_ids=$(join_by , 0 1 2 3)
 dtype='fp16'
 dtypes=('-dtype_a' "${dtype}" '-dtype_b' "${dtype}" '-dtype_c' "${dtype}")
 
