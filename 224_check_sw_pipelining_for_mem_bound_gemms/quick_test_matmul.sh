@@ -10,6 +10,10 @@ test_matmul() {
     python "${script_dir}/test_matmul.py" -m "${m}" -n "${n}" -k "${k}"
 }
 
+triton_cache_dir="${HOME}/.triton/cache"
+echo "Cleaning Triton cache at [${triton_cache_dir}]..."
+rm --recursive --force "${triton_cache_dir}"
+
 declare -a shapes=(
     '1 8192 28672'
     '1 6144 6144'
