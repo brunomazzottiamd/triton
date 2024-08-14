@@ -32,22 +32,21 @@ def is_hip_available():
 def get_full_tuning_space():
     configs = []
 
-    # For dot implementation use this `block_m_range`:
-    # block_m_range = [16]
-    # For multiply-reduce implementation use this `block_m_range`:
-    block_m_range = [1, 2]
+    # SEARCH SPACE =============================================================
+    block_m_range = [16]
     block_n_range = [16, 32, 64, 128, 256]
     block_k_range = [16, 32, 64, 128, 256]
     split_k_range = [1]
     num_warps_range = [1, 2, 4, 8]
     group_m_range = [1]
-    # For now we see better perf with num_stages=0 for all gemm configs we care
-    # But keep this explicit so that we do not forget we may need to set it to
-    # other values in the future
+    # For the current compiler use this `num_stage_range`:
     num_stage_range = [0]
+    # For the compiler under development use this `num_stage_range`:
+    # num_stage_range = [0, 1, 2, 3, 4]
     waves_per_eu_range = [0]
     matrix_instr_nonkdim_range = [16]
     kpack_range = [1, 2]
+    # ============================================================= SEARCH SPACE
 
     for block_m in block_m_range:
         for block_n in block_n_range:
@@ -121,19 +120,15 @@ def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
             continue
         SPLIT_K = config.get("SPLIT_K")
         GROUP_M = config.get("GROUP_SIZE_M")
-        # Commented out to test `BLOCK_SIZE_M < 16`, i.e. multiply-reduce implementation.
-        # if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
-        #     continue
-        # if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
-        #     continue
+        if BLOCK_SIZE_M < matrix_instr_nonkdim or BLOCK_SIZE_N < matrix_instr_nonkdim:
+            continue
+        if M <= matrix_instr_nonkdim and BLOCK_SIZE_M != matrix_instr_nonkdim:
+            continue
         if N <= matrix_instr_nonkdim and BLOCK_SIZE_N != matrix_instr_nonkdim:
             continue
         # Skip BLOCK_SIZE that is too large compare to M/N
         # unless BLOCK_SIZE is already small enough
-        # For dot implementation use this `if` statement:
-        # if BLOCK_SIZE_M > M * 2 and BLOCK_SIZE_M != 16:
-        # For multiply-reduce implementation use this `if` statement:
-        if BLOCK_SIZE_M > M * 2:
+        if BLOCK_SIZE_M > M * 2 and BLOCK_SIZE_M != 16:
             continue
         if BLOCK_SIZE_N > N * 2 and BLOCK_SIZE_N != 16:
             continue
