@@ -19,6 +19,7 @@ DEFAULT_HAS_BIAS: bool = False
 # Default values are listed in this source file:
 # https://github.com/triton-lang/triton/blob/main/third_party/amd/backend/compiler.py#L28
 DEFAULT_NUM_WARPS: int = 4
+DEFAULT_NUM_STAGES: int = 0
 DEFAULT_KPACK: int = 1
 
 
@@ -51,7 +52,8 @@ def triton_block_size(s: int, block_s: Optional[int], max_block_s: int = 256) ->
 
 def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: Optional[int] = None,
                   block_n: Optional[int] = None, block_k: Optional[int] = None,
-                  num_warps: Optional[int] = DEFAULT_NUM_WARPS, kpack: Optional[int] = DEFAULT_KPACK) -> Tensor:
+                  num_warps: Optional[int] = DEFAULT_NUM_WARPS, num_stages: Optional[int] = DEFAULT_NUM_STAGES,
+                  kpack: Optional[int] = DEFAULT_KPACK) -> Tensor:
     m: int
     n: int
     k: int
@@ -92,7 +94,7 @@ def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: 
         k % b_k == 0,  # even_k
         # Compiler / runtime parameters
         num_warps=num_warps if num_warps is not None else DEFAULT_NUM_WARPS,
-        num_stages=0,  # always 0
+        num_stages=num_stages if num_stages is not None else DEFAULT_NUM_STAGES,
         waves_per_eu=0,  # always 0
         matrix_instr_nonkdim=16,  # always 16
         kpack=kpack if kpack is not None else DEFAULT_KPACK,
@@ -103,7 +105,7 @@ def triton_matmul(a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: 
 
 def matmul(engine: str, a: Tensor, b: Tensor, bias: Optional[Tensor] = None, block_m: Optional[int] = None,
            block_n: Optional[int] = None, block_k: Optional[int] = None, num_warps: Optional[int] = None,
-           kpack: Optional[int] = None) -> Tensor:
+           num_stages: Optional[int] = None, kpack: Optional[int] = None) -> Tensor:
     assert engine in ["torch", "triton"]
 
     assert a.is_cuda
@@ -127,39 +129,41 @@ def matmul(engine: str, a: Tensor, b: Tensor, bias: Optional[Tensor] = None, blo
     assert block_n is None or block_n > 0
     assert block_k is None or block_k > 0
     assert num_warps is None or num_warps > 0
+    assert num_stages is None or num_stages > 0
     assert kpack is None or kpack > 0
 
     if engine == "torch":
         return torch_matmul(a, b, bias=bias)
 
     return triton_matmul(a, b, bias=bias, block_m=block_m, block_n=block_n, block_k=block_k, num_warps=num_warps,
-                         kpack=kpack)
+                         num_stages=num_stages, kpack=kpack)
 
 
 def run_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
                block_n: Optional[int] = None, block_k: Optional[int] = None, num_warps: Optional[int] = None,
-               kpack: Optional[int] = None) -> tuple[Tensor, Tensor]:
+               num_stages: Optional[int] = None, kpack: Optional[int] = None) -> tuple[Tensor, Tensor]:
     a: Tensor
     b: Tensor
     bias: Optional[Tensor]
     a, b, bias = gen_input(m, n, k, has_bias=has_bias)
     c_torch: Tensor = matmul("torch", a, b, bias=bias)
     c_triton: Tensor = matmul("triton", a, b, bias=bias, block_m=block_m, block_n=block_n, block_k=block_k,
-                              num_warps=num_warps, kpack=kpack)
+                              num_warps=num_warps, num_stages=num_stages, kpack=kpack)
     return c_torch, c_triton
 
 
 def check_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, block_m: Optional[int] = None,
                  block_n: Optional[int] = None, block_k: Optional[int] = None, num_warps: Optional[int] = None,
-                 kpack: Optional[int] = None) -> None:
+                 num_stages: Optional[int] = None, kpack: Optional[int] = None) -> None:
     c_torch: Tensor
     c_triton: Tensor
     c_torch, c_triton = run_matmul(m, n, k, has_bias=has_bias, block_m=block_m, block_n=block_n, block_k=block_k,
-                                   num_warps=num_warps, kpack=kpack)
+                                   num_warps=num_warps, num_stages=num_stages, kpack=kpack)
     assert torch.allclose(c_torch, c_triton, atol=1e-3, rtol=1e-2)
 
 
-def run_config(m: int, n: int, k: int) -> None:
+def run_config(m: int, n: int, k: int, num_stages: Optional[int]) -> None:
+    # TODO: Figure what to do with `num_stages` here.
     configs: dict[tuple[int, int, int], dict[str, Any]] = {
         (1, 8192, 28672): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 2, "kpack": 1},
         (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
@@ -168,7 +172,8 @@ def run_config(m: int, n: int, k: int) -> None:
     }
     mnk: tuple[int, int, int] = (m, n, k)
     try:
-        check_matmul(m, n, k, **(configs)[mnk])
+        config: dict[str, Any] = configs[mnk]
+        check_matmul(m, n, k, **config)
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
 
@@ -178,6 +183,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-m", type=int, required=True, help="rows of matrix A")
     parser.add_argument("-n", type=int, required=True, help="columns of matrix A / rows of matrix B")
     parser.add_argument("-k", type=int, required=True, help="columns of matrix B")
+    parser.add_argument("--num_stages", type=int, choices=[0, 1, 2, 3, 4],
+                        help="number of stages for software pipeliner")
     args: argparse.Namespace = parser.parse_args()
     try:
         sizes: tuple[int, ...] = tuple(int(size) for size in (args.m, args.n, args.k))
@@ -192,7 +199,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args: argparse.Namespace = parse_args()
     torch.manual_seed(42)
-    run_config(args.m, args.n, args.k)
+    run_config(args.m, args.n, args.k, args.num_stages)
 
 
 if __name__ == "__main__":
