@@ -48,7 +48,7 @@ echo 'Getting kernel dispatch ID...'
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 kernel_program=(
-    python "${script_dir}/test_matmul.py" single -m 1 -n 4096 -k 4096
+    python "${script_dir}/test_matmul.py" -m 1 -n 4096 -k 4096
 )
 
 dispatch_id=$(rocprofv2 \

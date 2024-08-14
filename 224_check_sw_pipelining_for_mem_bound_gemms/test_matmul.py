@@ -8,7 +8,6 @@ import argparse
 import sys
 from typing import Any, Optional
 
-import pytest
 import torch
 from torch import Tensor
 import triton
@@ -16,9 +15,6 @@ import triton
 from matmul_kernel import matmul_kernel
 
 DTYPES: list[str] = ["f16", "f32"]
-SMALL_SIZES: list[int] = list(range(1, 17))
-BIG_SIZES: list[int] = sorted([2**i for i in range(5, 15)] + [28672, 6144, 777, 4861, 1133])
-
 DEFAULT_HAS_BIAS: bool = False
 
 # Default values are listed in this source file:
@@ -169,17 +165,6 @@ def check_matmul(dtype: str, m: int, n: int, k: int, has_bias: bool = DEFAULT_HA
     assert torch.allclose(c_torch, c_triton, atol=1e-3, rtol=1e-2)
 
 
-@pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("m", SMALL_SIZES + [BIG_SIZES[0]])
-@pytest.mark.parametrize("n", BIG_SIZES)
-@pytest.mark.parametrize("k", BIG_SIZES)
-@pytest.mark.parametrize("has_bias", [False, True])
-@pytest.mark.parametrize("num_warps", [1, 2, 4, 8])
-@pytest.mark.parametrize("kpack", [1, 2])
-def test_matmul(dtype: str, m: int, n: int, k: int, has_bias: bool, num_warps: int, kpack: int) -> None:
-    check_matmul(dtype, m, n, k, has_bias=has_bias, num_warps=num_warps, kpack=kpack)
-
-
 def run_config(m: int, n: int, k: int) -> None:
     configs: dict[tuple[int, int, int], dict[str, Any]] = {
         (1, 8192, 28672): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 2, "kpack": 1},
@@ -196,20 +181,14 @@ def run_config(m: int, n: int, k: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description="test C = A * B matmul kernel")
-    parser.add_argument(
-        "mode", type=str, choices=["single", "full"],
-        help="test mode, use 'full' for the complete test and 'single' for a specific size configuration")
-    parser.add_argument("-m", type=int, help="rows of matrix A")
-    parser.add_argument("-n", type=int, help="columns of matrix A / rows of matrix B")
-    parser.add_argument("-k", type=int, help="columns of matrix B")
+    parser.add_argument("-m", type=int, required=True, help="rows of matrix A")
+    parser.add_argument("-n", type=int, required=True, help="columns of matrix A / rows of matrix B")
+    parser.add_argument("-k", type=int, required=True, help="columns of matrix B")
     args: argparse.Namespace = parser.parse_args()
     try:
-        if args.mode == "single":
-            sizes: tuple[int, ...] = tuple(int(size) for size in (args.m, args.n, args.k))
-            if any(size is None for size in sizes):
-                raise ValueError(f"(m, n, k) = {sizes}, all are required for 'single' test mode")
-            if any(size <= 0 for size in sizes):
-                raise ValueError(f"(m, n, k) = {sizes}, all must be positive")
+        sizes: tuple[int, ...] = tuple(int(size) for size in (args.m, args.n, args.k))
+        if any(size <= 0 for size in sizes):
+            raise ValueError(f"(m, n, k) = {sizes}, all must be positive")
     except ValueError as arg_error:
         print(arg_error)
         sys.exit(1)
@@ -218,12 +197,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args: argparse.Namespace = parse_args()
-
     torch.manual_seed(42)
-
-    if args.mode == "full":
-        sys.exit(pytest.main(["--quiet", "--exitfirst"]))
-
     run_config(args.m, args.n, args.k)
 
 

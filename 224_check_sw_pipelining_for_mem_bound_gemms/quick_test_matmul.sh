@@ -7,7 +7,7 @@ test_matmul() {
     n="${2}"
     k="${3}"
     echo "Testing 'matmul' for (M, N, K) = (${m}, ${n}, ${k})"
-    python "${script_dir}/test_matmul.py" single -m "${m}" -n "${n}" -k "${k}"
+    python "${script_dir}/test_matmul.py" -m "${m}" -n "${n}" -k "${k}"
 }
 
 declare -a shapes=(
