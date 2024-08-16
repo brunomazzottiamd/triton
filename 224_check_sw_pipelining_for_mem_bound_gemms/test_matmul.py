@@ -162,17 +162,28 @@ def check_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, bloc
     assert torch.allclose(c_torch, c_triton, atol=1e-3, rtol=1e-2)
 
 
-def run_config(m: int, n: int, k: int, num_stages: Optional[int]) -> None:
-    # TODO: Figure what to do with `num_stages` here.
-    configs: dict[tuple[int, int, int], dict[str, Any]] = {
+def run_config(m: int, n: int, k: int, new_pipeliner: bool, num_stages: Optional[int]) -> None:
+    main_configs: dict[tuple[int, int, int], dict[str, Any]] = {
         (1, 8192, 28672): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 2, "kpack": 1},
         (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
-        (1, 4096, 4096): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 4, "kpack": 1},
-        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 1, "kpack": 1},
+        (1, 4096, 4096): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
+        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 1, "kpack": 2},
+    }
+    new_pipeliner_configs: dict[tuple[int, int, int], dict[str, Any]] = {
+        (1, 8192, 28672): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 2, "kpack": 2},
+        (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 0, "kpack": 2},
+        (1, 4096, 4096): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 0, "kpack": 2},
+        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 1, "kpack": 2},
     }
     mnk: tuple[int, int, int] = (m, n, k)
     try:
-        config: dict[str, Any] = configs[mnk]
+        config: dict[str, Any] = (new_pipeliner_configs if new_pipeliner else main_configs)[mnk]
+        if num_stages:
+            does_not_have_num_stages: bool = "num_stages" not in config
+            has_distinct_num_stages: bool = "num_stages" in config and config["num_stages"] != num_stages
+            if does_not_have_num_stages or has_distinct_num_stages:
+                print("Overriding num_stages.")
+                config["num_stages"] = num_stages
         check_matmul(m, n, k, **config)
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
@@ -183,8 +194,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-m", type=int, required=True, help="rows of matrix A")
     parser.add_argument("-n", type=int, required=True, help="columns of matrix A / rows of matrix B")
     parser.add_argument("-k", type=int, required=True, help="columns of matrix B")
+    parser.add_argument("--new_pipeliner", default=False, action="store_true", help="use new software pipeliner")
     parser.add_argument("--num_stages", type=int, choices=[0, 1, 2, 3, 4],
-                        help="number of stages for software pipeliner")
+                        help="optional number of stages for software pipeliner")
     args: argparse.Namespace = parser.parse_args()
     try:
         sizes: tuple[int, ...] = tuple(int(size) for size in (args.m, args.n, args.k))
@@ -199,7 +211,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args: argparse.Namespace = parse_args()
     torch.manual_seed(42)
-    run_config(args.m, args.n, args.k, args.num_stages)
+    run_config(args.m, args.n, args.k, args.new_pipeliner, args.num_stages)
 
 
 if __name__ == "__main__":
