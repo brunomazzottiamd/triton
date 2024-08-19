@@ -129,7 +129,7 @@ def matmul(engine: str, a: Tensor, b: Tensor, bias: Optional[Tensor] = None, blo
     assert block_n is None or block_n > 0
     assert block_k is None or block_k > 0
     assert num_warps is None or num_warps > 0
-    assert num_stages is None or num_stages > 0
+    assert num_stages is None or num_stages >= 0
     assert kpack is None or kpack > 0
 
     if engine == "torch":
