@@ -1,5 +1,13 @@
 import os
-from .utils import *
+
+from .utils import (
+    get_filename_compile_driver,
+    get_filename_myKernels,
+    get_filename_profile_driver,
+    get_filename_without_extension,
+    name_to_tl_types,
+    tl_to_torch_types,
+)
 
 
 def read_config(config):
@@ -44,20 +52,15 @@ def generate_matmul_kernels(configs):
 import triton.language as tl"""
     f_kernel.write(import_str)
 
-    with open(
-            os.path.dirname(os.path.abspath(__file__)) +
-            "/../matmul_kernel.py") as file:
+    with open(os.path.dirname(os.path.abspath(__file__)) + "/../matmul_kernel.py") as file:
         matmul_kernel_code = file.read()
 
     for config in configs:
         configStr = gen_configStr(config)
         # Copy the matmul_kernel with name replaced
-        matmul_kernel_config = matmul_kernel_code.replace(
-            "matmul_kernel", f"matmul_kernel_{configStr}")
-        matmul_kernel_config = matmul_kernel_config.replace(
-            "import triton.language as tl", "")
-        matmul_kernel_config = matmul_kernel_config.replace(
-            "import triton", "")
+        matmul_kernel_config = matmul_kernel_code.replace("matmul_kernel", f"matmul_kernel_{configStr}")
+        matmul_kernel_config = matmul_kernel_config.replace("import triton.language as tl", "")
+        matmul_kernel_config = matmul_kernel_config.replace("import triton", "")
         f_kernel.write(matmul_kernel_config)
 
     f_kernel.close()
@@ -65,14 +68,17 @@ import triton.language as tl"""
 
 ## construct the configStr and generate the wrapper function matmul_{configStr}()
 ## If `warmup` is set, the generated kernel will be **compiled**
-def gen_kernel_and_configStr_from_config(config, EVEN_K, dtype_a, dtype_b,
-                                         dtype_c, bias_size, warmup):
+def gen_kernel_and_configStr_from_config(config, EVEN_K, dtype_a, dtype_b, dtype_c, bias_size, warmup):
     block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, mfmaInstrSize, kpack = read_config(
         config)
 
     configStr = gen_configStr(config)
 
     use_bias = bias_size > 0
+
+    ## Let's enable xcd-based pid remapping only when split-K is NOT used
+    ## Also #xcd is fixed to 8. If we are tuning for MI308, please change it to 4
+    num_xcds = 1 if split_k > 1 else 8
 
     if warmup:
         torch_dtype_a = 'fp16'
@@ -87,6 +93,7 @@ def gen_kernel_and_configStr_from_config(config, EVEN_K, dtype_a, dtype_b,
 
         matmul_def_str = f"""
 def matmul_{configStr}(M, N, K, am, ak, bk, bn, cm, cn, biasn):
+    grid_mn = triton.cdiv(M, {block_m}) * triton.cdiv(N, {block_n})
     matmul_kernel_{configStr}.warmup(
         {torch_dtype_a}, {torch_dtype_b}, {torch_dtype_c}, {torch_dtype_c},
         M, N, K,
@@ -101,8 +108,10 @@ def matmul_{configStr}(M, N, K, am, ak, bk, bn, cm, cn, biasn):
         waves_per_eu = {waves_per_eu},
         matrix_instr_nonkdim = {mfmaInstrSize},
         kpack = {kpack},
-        BIAS={use_bias},
-        EVEN_K={EVEN_K},
+        BIAS = {use_bias},
+        EVEN_K = {EVEN_K},
+        GRID_MN = grid_mn,
+        NUM_XCDS = {num_xcds},
         grid=(1,),
     )
     return None
@@ -134,15 +143,16 @@ def matmul_{configStr}(a, b, c, bias, M, N, K, am, ak, bk, bn, cm, cn, biasn):
         matrix_instr_nonkdim = {mfmaInstrSize},
         kpack = {kpack},
         BIAS = {use_bias},
-        EVEN_K = {EVEN_K}
+        EVEN_K = {EVEN_K},
+        GRID_MN = grid[0],
+        NUM_XCDS = {num_xcds}
     )
     return c
 """
     return configStr, matmul_def_str
 
 
-def generate_compile_driver(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c,
-                            init_type, configs, rotating_buffer_size,
+def generate_compile_driver(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, configs, rotating_buffer_size,
                             bias_size):
     """
     Generate a single file that contains all kernels in the tuning space.
@@ -167,8 +177,8 @@ from {get_filename_without_extension(get_filename_myKernels())} import *
 
     for config in configs:
         EVEN_K = True if K % config.get('BLOCK_SIZE_K') == 0 else False
-        configStr, matmul_def_str = gen_kernel_and_configStr_from_config(
-            config, EVEN_K, dtype_a, dtype_b, dtype_c, bias_size, True)
+        configStr, matmul_def_str = gen_kernel_and_configStr_from_config(config, EVEN_K, dtype_a, dtype_b, dtype_c,
+                                                                         bias_size, True)
         # Copy the matmul_kernel with name replaced
         f_kernel.write(matmul_def_str + "\n")
 
@@ -242,8 +252,7 @@ def main():
     return filename
 
 
-def generate_profile_tasks(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c,
-                           init_type, configs, jobs, iters, run_bench,
+def generate_profile_tasks(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, configs, jobs, iters, run_bench,
                            rotating_buffer_size, bias_size, icache_flush):
     """
     Open {len(jobs)} files
@@ -280,8 +289,8 @@ from icache_flush import icache_flush
     for config in configs:
         file_idx = idx % jobs
         EVEN_K = True if K % config.get('BLOCK_SIZE_K') == 0 else False
-        configStr, matmul_def_str = gen_kernel_and_configStr_from_config(
-            config, EVEN_K, dtype_a, dtype_b, dtype_c, bias_size, False)
+        configStr, matmul_def_str = gen_kernel_and_configStr_from_config(config, EVEN_K, dtype_a, dtype_b, dtype_c,
+                                                                         bias_size, False)
         # Copy the matmul_kernel with name replaced
         f_kernel[file_idx].write(matmul_def_str + "\n")
         idx += 1
@@ -310,8 +319,7 @@ from icache_flush import icache_flush
 
     # call all matmul_xxx functions
     idx = 0
-    runs = iters if run_bench else 200
-    call_icache_flush = 'icache_flush()' if icache_flush else ''
+    runs = iters if run_bench else 120
     for config in configs:
         configStr = gen_configStr(config)
         matmul_call_str = f"""
@@ -324,7 +332,7 @@ from icache_flush import icache_flush
             bias = tensors['bias'][i % rotating_num] if bias_size > 0 else None
             bias_stride = bias.stride(0) if bias_size > 0 else 0"""
         if icache_flush:
-            matmul_call_str += f"""
+            matmul_call_str += """
             icache_flush()"""
         matmul_call_str += f"""
             d = matmul_{configStr}(a, b, c, bias, M, N, K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), c.stride(0), c.stride(1), bias_stride)"""

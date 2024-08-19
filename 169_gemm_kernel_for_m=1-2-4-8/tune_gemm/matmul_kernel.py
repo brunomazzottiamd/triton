@@ -3,21 +3,25 @@ import triton.language as tl
 
 
 @triton.jit
-def matmul_kernel(
-    a_ptr, b_ptr, c_ptr, bias_ptr,
-    M, N, K,
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    stride_bias,
-    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
-    SPLIT_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr, BIAS: tl.constexpr,
-    EVEN_K: tl.constexpr
-):
+def matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr, M, N, K, stride_am, stride_ak, stride_bk, stride_bn, stride_cm,
+                  stride_cn, stride_bias, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
+                  BLOCK_SIZE_K: tl.constexpr, SPLIT_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr, BIAS: tl.constexpr,
+                  EVEN_K: tl.constexpr, GRID_MN: tl.constexpr, NUM_XCDS: tl.constexpr):
     pid = tl.program_id(axis=0)
     pid_z = tl.program_id(1)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+
+    if NUM_XCDS != 1:
+        ## pid remapping on xcds
+        # Number of pids per XCD in the new arrangement
+        pids_per_xcd = GRID_MN // NUM_XCDS
+        # Compute current XCD and local pid within the XCD
+        xcd = pid % NUM_XCDS
+        local_pid = pid // NUM_XCDS
+        # Calculate new pid based on the new grouping
+        pid = xcd * pids_per_xcd + local_pid
+
     if GROUP_SIZE_M == 1:
         pid_m = pid // num_pid_n
         pid_n = pid % num_pid_n
@@ -26,8 +30,9 @@ def matmul_kernel(
         group_id = pid // num_pid_in_group
         first_pid_m = group_id * GROUP_SIZE_M
         group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-        pid_m = first_pid_m + (pid % group_size_m)
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
         pid_n = (pid % num_pid_in_group) // group_size_m
+
     if SPLIT_K == 1:
         offs_k = tl.arange(0, BLOCK_SIZE_K)
     else:
@@ -55,11 +60,6 @@ def matmul_kernel(
         # ======================================================================
         # For multiply-reduce implementation use this piece of code:
         # ----------------------------------------------------------------------
-        # TODO: `min_dot_size` isn't always (16, 16, 16), it's architecture
-        #       dependent and data type dependent. Please check this:
-        #       https://github.com/triton-lang/triton/blob/main/third_party/amd/backend/compiler.py#L14
-        #       Q: How can we implement this `if` statement more precisely?
-        #       A: Maybe we can use an approach similar to `EVEN_K`.
         if (BLOCK_SIZE_M < 16 or BLOCK_SIZE_N < 16) or BLOCK_SIZE_K < 16:
             a = tl.reshape(a, (BLOCK_SIZE_M, BLOCK_SIZE_K, 1)).to(acc_dtype)
             b = tl.reshape(b, (1, BLOCK_SIZE_K, BLOCK_SIZE_N)).to(acc_dtype)
