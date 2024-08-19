@@ -5,6 +5,7 @@
 # pylint: disable=missing-module-docstring,missing-function-docstring,too-many-arguments
 
 import argparse
+import re
 import sys
 from typing import Any, Optional
 
@@ -162,28 +163,77 @@ def check_matmul(m: int, n: int, k: int, has_bias: bool = DEFAULT_HAS_BIAS, bloc
     assert torch.allclose(c_torch, c_triton, atol=1e-3, rtol=1e-2)
 
 
+def config_from_str(config_str: str) -> dict[str, Any]:
+    pattern: str = "BM16_BN([0-9]+)_BK([0-9]+)_GM1_SK1_nW([1248])_nS([01234])_EU0_kP([12])_mfma16"
+    match: re.Match[str] | None = re.match(pattern, config_str.strip())
+    if not match:
+        print(f"Invalid configuration string: [{config_str}]")
+        return {}
+    return {
+        "block_m": 16,
+        "block_n": int(match.group(1)),
+        "block_k": int(match.group(2)),
+        "num_warps": int(match.group(3)),
+        "num_stages": int(match.group(4)),
+        "kpack": int(match.group(5)),
+    }
+
+
 def run_config(m: int, n: int, k: int, new_pipeliner: bool, num_stages: Optional[int]) -> None:
     main_configs: dict[tuple[int, int, int], dict[str, Any]] = {
-        (1, 8192, 28672): {"block_m": 16, "block_n": 16, "block_k": 256, "num_warps": 2, "kpack": 1},
-        (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
-        (1, 4096, 4096): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "kpack": 2},
-        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 1, "kpack": 2},
+        (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS0_EU0_kP1_mfma16"),
+        (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+        (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+        (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP2_mfma16"),
     }
-    new_pipeliner_configs: dict[tuple[int, int, int], dict[str, Any]] = {
-        (1, 8192, 28672): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 2, "kpack": 2},
-        (1, 6144, 6144): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 0, "kpack": 2},
-        (1, 4096, 4096): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 0, "kpack": 2},
-        (2, 16384, 16384): {"block_m": 16, "block_n": 32, "block_k": 256, "num_warps": 2, "num_stages": 1, "kpack": 2},
+    var_num_stages_new_pipeliner_configs: dict[tuple[int, int, int], dict[str, Any]] = {
+        (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+        (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+        (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+        (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP2_mfma16"),
     }
+    fixed_num_stages_new_pipeliner_configs: list[dict[tuple[int, int, int], dict[str, Any]]] = [
+        # num_stages=0
+        {
+            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP2_mfma16"),
+        },
+        # num_stages=1
+        {
+            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP2_mfma16"),
+        },
+        # num_stages=2
+        {
+            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS2_EU0_kP2_mfma16"),
+        },
+        # num_stages=3
+        {
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK128_GM1_SK1_nW4_nS3_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN16_BK128_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
+        },
+        # num_stages=4
+        {
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK128_GM1_SK1_nW2_nS4_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN32_BK128_GM1_SK1_nW4_nS4_EU0_kP1_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK128_GM1_SK1_nW4_nS4_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN16_BK64_GM1_SK1_nW2_nS4_EU0_kP1_mfma16"),
+        },
+    ]
     mnk: tuple[int, int, int] = (m, n, k)
     try:
-        config: dict[str, Any] = (new_pipeliner_configs if new_pipeliner else main_configs)[mnk]
-        if num_stages:
-            does_not_have_num_stages: bool = "num_stages" not in config
-            has_distinct_num_stages: bool = "num_stages" in config and config["num_stages"] != num_stages
-            if does_not_have_num_stages or has_distinct_num_stages:
-                print("Overriding num_stages.")
-                config["num_stages"] = num_stages
+        config: dict[str, Any] = (main_configs if not new_pipeliner else
+                                  (var_num_stages_new_pipeliner_configs
+                                   if not num_stages else fixed_num_stages_new_pipeliner_configs[num_stages]))[mnk]
         check_matmul(m, n, k, **config)
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
