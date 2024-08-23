@@ -40,9 +40,9 @@ def get_full_tuning_space():
     num_warps_range = [1, 2, 4, 8]
     group_m_range = [1]
     # For the current compiler use this `num_stage_range`:
-    num_stage_range = [0]
+    # num_stage_range = [0]
     # For the compiler under development use this `num_stage_range`:
-    # num_stage_range = [0, 1, 2, 3, 4]
+    num_stage_range = [0, 1, 2, 3, 4]
     waves_per_eu_range = [0]
     matrix_instr_nonkdim_range = [16]
     kpack_range = [1, 2]

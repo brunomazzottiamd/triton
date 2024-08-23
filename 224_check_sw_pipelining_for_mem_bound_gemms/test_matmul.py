@@ -230,10 +230,12 @@ def run_config(m: int, n: int, k: int, new_pipeliner: bool, num_stages: Optional
         },
     ]
     mnk: tuple[int, int, int] = (m, n, k)
+    print(f"{mnk} {new_pipeliner} {num_stages}")
     try:
         config: dict[str, Any] = (main_configs if not new_pipeliner else
                                   (var_num_stages_new_pipeliner_configs
                                    if not num_stages else fixed_num_stages_new_pipeliner_configs[num_stages]))[mnk]
+        print(config)
         check_matmul(m, n, k, **config)
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")

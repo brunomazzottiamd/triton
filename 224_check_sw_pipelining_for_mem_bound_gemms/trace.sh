@@ -22,7 +22,8 @@ copy_kernel_file() {
 echo 'Cleaning older files from previous runs...'
 
 # TODO: Make `output_dir` a script argument.
-output_dir="output"
+num_stages="${1}"
+output_dir="new_sp_nS${num_stages}"
 output_zip="$(basename "${output_dir}").zip"
 
 remove "${output_dir}" "${output_zip}"
@@ -48,7 +49,7 @@ echo 'Getting kernel dispatch ID...'
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 kernel_program=(
-    python "${script_dir}/test_matmul.py" -m 1 -n 4096 -k 4096
+    python "${script_dir}/test_matmul.py" --new_pipeliner --num_stages "${num_stages}" -m 1 -n 4096 -k 4096
 )
 
 dispatch_id=$(rocprofv2 \
