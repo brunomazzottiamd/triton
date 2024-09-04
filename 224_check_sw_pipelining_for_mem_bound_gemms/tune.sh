@@ -21,7 +21,7 @@ get_gpu_ids() {
         'sc-am11-smc-01')
             ids=(0 1 2 3)
             ;;
-        'smc300x-ccs-aus-GPUF292')
+        'smc300x-ccs-aus-GPUF292'|'smc300x-ccs-aus-GPUF2AB')
             ids=(5 6 7)
             ;;
         *)
@@ -59,6 +59,7 @@ python "${tune_gemm_py}" \
     --o "${tuning_results}" \
     --jobs 4 \
     --gpu_ids="${gpu_ids}" \
+    --icache_flush \
     "${dtypes[@]}" \
     | tee "${results_dir}/01_tune.txt"
 
@@ -83,6 +84,7 @@ python "${tune_gemm_py}" \
     --o "${bench_results}" \
     --benchmark \
     --gpu_ids="${gpu_ids}" \
+    --icache_flush \
     "${dtypes[@]}" \
     | tee "${results_dir}/04_bench.txt"
 
