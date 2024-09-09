@@ -1,0 +1,6 @@
+Benchmarking gemm with fp16 inputs
+trans     M      N      K    TFLOPS   us
+TN        1   8192  28672    3.68     127.67
+TN        1   6144   6144    4.34     17.40
+TN        1   4096   4096    2.53     13.26
+TN        2  16384  16384    7.13     150.55
