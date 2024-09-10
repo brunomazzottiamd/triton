@@ -60,6 +60,7 @@ python "${tune_gemm_py}" \
     --jobs 4 \
     --gpu_ids="${gpu_ids}" \
     --icache_flush \
+    --rotating_tensor 512 \
     "${dtypes[@]}" \
     | tee "${results_dir}/01_tune.txt"
 
@@ -85,6 +86,7 @@ python "${tune_gemm_py}" \
     --benchmark \
     --gpu_ids="${gpu_ids}" \
     --icache_flush \
+    --rotating_tensor 512 \
     "${dtypes[@]}" \
     | tee "${results_dir}/04_bench.txt"
 
