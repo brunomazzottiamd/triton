@@ -1,3 +1,5 @@
+import argparse
+import sys
 import numpy as np
 import torch
 import triton
@@ -364,9 +366,14 @@ def benchmark(M, N, K, provider):
     return perf_us(ms), perf_us(min_ms), perf_us(max_ms)
 
 
-if __name__ == '__main__':
-    # test_gemm_a8w8()
-    benchmark.run(show_plots=False, print_data=True)
+def run_gemm_a8w8(m, n, k):
+    torch.random.manual_seed(0)
+    a, _ = gen_input(m, k, 'int8', False, 1, device='cuda')
+    b, _ = gen_input(k, n, 'int8', True, 2, device='cuda')
+    alpha_row = torch.rand([m, 1], dtype=torch.half).cuda()
+    alpha_col = torch.rand([1, n], dtype=torch.half).cuda()
+    out_triton = torch.empty([a.shape[0], b.shape[1]], dtype=torch.half, device=a.device)
+    gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
 
 
 @pytest.mark.parametrize('m, n, k', get_shapes())
@@ -388,3 +395,61 @@ def test_gemm_a8w8(m, n, k):
 
         diff = ~np.isclose(out_triton.half().cpu().numpy(), out_torch.half().cpu().numpy(), rtol=1e-2)
         assert diff.sum() < 10, f"m={m}, n={n}, k={k}"
+
+
+def positive_int(value: str) -> int:
+    try:
+        int_value = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not an integer.")
+    if int_value <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer.")
+    return int_value
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="C = (A * B) · S int8 matrix multiplication kernel",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument(
+        "mode", choices=["run", "check", "test", "bench"], help="mode of operation:\n"
+        "  run: run Triton kernel for a given (M, N, K) shape\n"
+        "  check: correctness check for a given (M, N, K) shape\n"
+        "  test: full correctness check for target shapes\n"
+        "  bench: benchmark performance for target shapes\n")
+    shape_group = parser.add_argument_group("kernel shape arguments")
+    shape_group.add_argument("-M", type=positive_int, help="rows of matrix A")
+    shape_group.add_argument("-N", type=positive_int, help="columns of matrix A / rows of matrix B")
+    shape_group.add_argument("-K", type=positive_int, help="columns of matrix B")
+    args = parser.parse_args()
+    if args.mode in ["run", "check"]:
+        try:
+            sizes = (args.M, args.N, args.K)
+            if any(size is None for size in sizes):
+                raise ValueError(f"(M, N, K) = {sizes}, all sizes must be specified together.")
+        except ValueError as arg_error:
+            print(arg_error)
+            sys.exit(1)
+    return args
+
+
+def main() -> int:
+    args = parse_args()
+    status: int = 0
+    match args.mode:
+        case "run":
+            run_gemm_a8w8(args.M, args.N, args.K)
+        case "check":
+            try:
+                test_gemm_a8w8(args.M, args.N, args.K)
+            except AssertionError as assert_error:
+                print(assert_error)
+                status = 1
+        case "test":
+            status = pytest.main(["-vvv", __file__])
+        case "bench":
+            benchmark.run(show_plots=False, print_data=True)
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main())
