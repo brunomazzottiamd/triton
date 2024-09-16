@@ -67,13 +67,13 @@ def _get_a8w8_configs():
     return a8w8_configs
 
 
-@triton.autotune(
-    configs=_get_a8w8_configs(),
-    key=['M', 'N', 'K'],
-)
-@triton.heuristics({
-    'EVEN_K': lambda args: args['K'] % (args['BLOCK_K']) == 0,
-})
+# @triton.autotune(
+#     configs=_get_a8w8_configs(),
+#     key=['M', 'N', 'K'],
+# )
+# @triton.heuristics({
+#     'EVEN_K': lambda args: args['K'] % (args['BLOCK_K']) == 0,
+# })
 @triton.jit
 def _triton_gemm_a8w8_kernel(
     # Pointers to matrices
@@ -210,7 +210,13 @@ def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col):
         return (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), 1, 1)
 
     # _triton_gemm_a8w8_kernel[grid](*kwargs, enable_moe_lds_bypass=True)
-    _triton_gemm_a8w8_kernel[grid](*kwargs)
+
+    # Hardcoded best config for (M, N, K) = (20, 1920, 13312):
+    BLOCK_K = 256
+    _triton_gemm_a8w8_kernel[grid](a, b, out, torch.squeeze(alpha_row), torch.squeeze(alpha_col), M, N, K, a.stride(0),
+                                   a.stride(1), b.stride(0), b.stride(1), out.stride(0), out.stride(1), BLOCK_M=16,
+                                   BLOCK_N=64, BLOCK_K=BLOCK_K, GROUP_SIZE_M=1, EVEN_K=K % BLOCK_K == 0,
+                                   matrix_instr_nonkdim=16, kpack=2, num_warps=4, num_ctas=1, num_stages=0)
 
 
 def get_shapes():
