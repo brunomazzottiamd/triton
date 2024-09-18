@@ -42,7 +42,13 @@ def get_full_tuning_space():
     # For the current compiler use this `num_stage_range`:
     # num_stage_range = [0]
     # For the compiler under development use this `num_stage_range`:
-    num_stage_range = [0, 1, 2, 3, 4]
+    # num_stage_range = [0, 1, 2, 3, 4]
+    num_stage_range = [0]
+    # num_stage_range = [1]
+    # num_stage_range = [2]
+    # num_stage_range = [3]
+    # num_stage_range = [4]
+    # ...
     waves_per_eu_range = [0]
     matrix_instr_nonkdim_range = [16]
     kpack_range = [1, 2]
