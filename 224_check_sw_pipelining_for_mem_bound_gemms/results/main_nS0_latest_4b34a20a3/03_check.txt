@@ -1,4 +1,0 @@
-SIZE M: 1, N: 8192, K: 28672, trans: TN Correct✅
-SIZE M: 1, N: 6144, K: 6144, trans: TN Correct✅
-SIZE M: 1, N: 4096, K: 4096, trans: TN Correct✅
-SIZE M: 2, N: 16384, K: 16384, trans: TN Correct✅
