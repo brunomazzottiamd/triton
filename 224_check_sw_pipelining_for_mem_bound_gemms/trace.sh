@@ -17,14 +17,40 @@ copy_kernel_file() {
     cp "${kernel_file}" "${output_dir}"
 }
 
+### Set output directory
+
+echo "TRITON_HIP_USE_NEW_STREAM_PIPELINE = [${TRITON_HIP_USE_NEW_STREAM_PIPELINE}]"
+
+if [ "${TRITON_HIP_USE_NEW_STREAM_PIPELINE}" != '1' ]; then
+    # StreamPipelinerV1
+    pipeliner='V1'
+    num_stages=0
+    output_dir="main_nS${num_stages}"
+    echo "Using StreamPipelinerV1. num_stages is [${num_stages}]"
+else
+    # StreamPipelinerV2
+    pipeliner='V2'
+    num_stages="${1}"
+    case "${num_stages}" in
+        0|1|2|3|4)
+            echo "num_stages [${num_stages}] is a valid one!"
+            ;;
+        *)
+            echo "num_stages [${num_stages}] is invalid! Provide a number in [0, 4]. Exiting..."
+            exit 1
+            ;;
+    esac
+    output_dir="new_sp_nS${num_stages}"
+    echo "Using StreamPipelinerV2. num_stages is [${num_stages}]"
+fi
+
+output_zip="$(basename "${output_dir}").zip"
+
+echo "Output directory is [${output_dir}], it'll be compressed to [${output_zip}]."
+
 ### Cleanup older files from previous runs
 
 echo 'Cleaning older files from previous runs...'
-
-# TODO: Make `output_dir` a script argument.
-num_stages="${1}"
-output_dir="new_sp_nS${num_stages}"
-output_zip="$(basename "${output_dir}").zip"
 
 remove "${output_dir}" "${output_zip}"
 
@@ -48,9 +74,11 @@ echo 'Getting kernel dispatch ID...'
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
-kernel_program=(
-    python "${script_dir}/test_matmul.py" --new_pipeliner --num_stages "${num_stages}" -m 1 -n 4096 -k 4096
-)
+kernel_program=(python "${script_dir}/test_matmul.py" -m 1 -n 6144 -k 6144)
+if [ "${pipeliner}" == 'V2' ]; then
+    kernel_program+=(--new_pipeliner --num_stages "${num_stages}")
+fi
+echo 'Kernel program is [' "${kernel_program[@]}" '].'
 
 dispatch_id=$(rocprofv2 \
     "${kernel_program[@]}" \
@@ -97,6 +125,8 @@ rocprofv2 \
     --mode file \
     --output-directory "${output_dir}" \
     "${kernel_program[@]}"
+
+remove "${output_dir}"/*.out
 
 ### Compress output directory
 # It's easier to transfer a single zip file!

@@ -182,10 +182,11 @@ def config_from_str(config_str: str) -> dict[str, Any]:
 def run_config(m: int, n: int, k: int, new_pipeliner: bool, num_stages: Optional[int]) -> None:
     main_configs: dict[tuple[int, int, int], dict[str, Any]] = {
         (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS0_EU0_kP1_mfma16"),
-        (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
+        (1, 6144, 6144): config_from_str("BM16_BN16_BK256_GM1_SK1_nW1_nS0_EU0_kP2_mfma16"),
         (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
-        (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP2_mfma16"),
+        (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP1_mfma16"),
     }
+    # THIS IS OUTDATED:
     var_num_stages_new_pipeliner_configs: dict[tuple[int, int, int], dict[str, Any]] = {
         (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
         (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
@@ -195,47 +196,47 @@ def run_config(m: int, n: int, k: int, new_pipeliner: bool, num_stages: Optional
     fixed_num_stages_new_pipeliner_configs: list[dict[tuple[int, int, int], dict[str, Any]]] = [
         # num_stages=0
         {
-            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
-            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
-            (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS0_EU0_kP2_mfma16"),
-            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS0_EU0_kP2_mfma16"),
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN16_BK512_GM1_SK1_nW1_nS2_EU0_kP1_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS2_EU0_kP1_mfma16"),
         },
         # num_stages=1
         {
-            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
-            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
-            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
-            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS1_EU0_kP2_mfma16"),
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK1024_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN32_BK512_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK512_GM1_SK1_nW2_nS1_EU0_kP1_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS1_EU0_kP2_mfma16"),
         },
         # num_stages=2
         {
-            (1, 8192, 28672): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
-            (1, 6144, 6144): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
-            (1, 4096, 4096): config_from_str("BM16_BN32_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
-            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS2_EU0_kP2_mfma16"),
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN16_BK512_GM1_SK1_nW1_nS2_EU0_kP1_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS2_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN32_BK256_GM1_SK1_nW1_nS2_EU0_kP1_mfma16"),
         },
         # num_stages=3
         {
-            (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
+            (1, 8192, 28672): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP1_mfma16"),
             (1, 6144, 6144): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
-            (1, 4096, 4096): config_from_str("BM16_BN16_BK128_GM1_SK1_nW4_nS3_EU0_kP2_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
             (2, 16384, 16384): config_from_str("BM16_BN16_BK128_GM1_SK1_nW2_nS3_EU0_kP2_mfma16"),
         },
         # num_stages=4
         {
             (1, 8192, 28672): config_from_str("BM16_BN16_BK128_GM1_SK1_nW2_nS4_EU0_kP2_mfma16"),
-            (1, 6144, 6144): config_from_str("BM16_BN32_BK128_GM1_SK1_nW4_nS4_EU0_kP1_mfma16"),
-            (1, 4096, 4096): config_from_str("BM16_BN16_BK128_GM1_SK1_nW4_nS4_EU0_kP2_mfma16"),
-            (2, 16384, 16384): config_from_str("BM16_BN16_BK64_GM1_SK1_nW2_nS4_EU0_kP1_mfma16"),
+            (1, 6144, 6144): config_from_str("BM16_BN16_BK128_GM1_SK1_nW2_nS4_EU0_kP2_mfma16"),
+            (1, 4096, 4096): config_from_str("BM16_BN16_BK256_GM1_SK1_nW2_nS4_EU0_kP2_mfma16"),
+            (2, 16384, 16384): config_from_str("BM16_BN16_BK64_GM1_SK1_nW2_nS4_EU0_kP2_mfma16"),
         },
     ]
     mnk: tuple[int, int, int] = (m, n, k)
-    print(f"{mnk} {new_pipeliner} {num_stages}")
+    print(f"(m, n, k) = {mnk}, new_pipeliner = {new_pipeliner}, num_stages = {num_stages}")
     try:
         config: dict[str, Any] = (main_configs if not new_pipeliner else
                                   (var_num_stages_new_pipeliner_configs
                                    if not num_stages else fixed_num_stages_new_pipeliner_configs[num_stages]))[mnk]
-        print(config)
+        print(f"Best tune_gemm config = {config}")
         check_matmul(m, n, k, **config)
     except KeyError:
         print(f"(m, n, k) = {mnk} is an unknown matmul kernel configuration.")
