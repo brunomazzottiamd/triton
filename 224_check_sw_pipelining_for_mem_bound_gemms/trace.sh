@@ -44,7 +44,7 @@ else
     echo "Using StreamPipelinerV2. num_stages is [${num_stages}]"
 fi
 
-output_zip="$(basename "${output_dir}").zip"
+output_zip="$(basename "${output_dir}").tar.xz"
 
 echo "Output directory is [${output_dir}], it'll be compressed to [${output_zip}]."
 
@@ -133,11 +133,9 @@ remove "${output_dir}"/*.out
 
 echo "Compressing output directory to [${output_zip}]..."
 
-zip \
-    -q \
-    -9 \
-    -r \
-    "${output_zip}" \
+tar \
+    -cf "${output_zip}" \
+    -I 'xz -9e' \
     "${output_dir}"
 
 ### Cleanup intermediate files
