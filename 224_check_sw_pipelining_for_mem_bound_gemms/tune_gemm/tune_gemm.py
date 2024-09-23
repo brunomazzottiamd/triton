@@ -35,7 +35,7 @@ def get_full_tuning_space():
     # SEARCH SPACE =============================================================
     block_m_range = [16]
     block_n_range = [16, 32, 64, 128, 256]
-    block_k_range = [16, 32, 64, 128, 256]
+    block_k_range = [16, 32, 64, 128, 256, 512, 1024]
     split_k_range = [1]
     num_warps_range = [1, 2, 4, 8]
     group_m_range = [1]
