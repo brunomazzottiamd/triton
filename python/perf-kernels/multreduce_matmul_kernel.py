@@ -221,7 +221,7 @@ def triton_matmul(triton_provider: str, a: Tensor, b: Tensor, bias: Optional[Ten
     M, K = a.shape
     _, N = b.shape
 
-    c: Tensor = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    c: Tensor = torch.zeros((M, N), device=a.device, dtype=a.dtype)
 
     def grid(args: dict[str, Any]) -> tuple[int]:
         return (triton.cdiv(M, args["BLOCK_SIZE_M"]) * triton.cdiv(N, args["BLOCK_SIZE_N"]), )
