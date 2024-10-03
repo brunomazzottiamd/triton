@@ -2,9 +2,10 @@
 
 echo 'Running hipBLASLt benchmark...'
 
-cd /root/hipBLASLt/build/release/clients/staging || exit 1
+cd /triton_dev/hipBLASLt/build/release/clients/staging || exit 1
 
-output_dir='./hipblaslt_results'
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+output_dir="${script_dir}/hipblaslt_results"
 rm --recursive --force "${output_dir}"
 mkdir --parents "${output_dir}"
 
