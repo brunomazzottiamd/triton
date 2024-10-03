@@ -244,8 +244,8 @@ def get_autotune_config() -> list[triton.Config]:
 def exp_approx(z):
     # Range reduction from z to r:
     #     Constants:
-    #         log(2) = 0.6931471805599453
-    #       1 / log2 = 1.4426950408889634
+    #           log(2) = 0.6931471805599453
+    #       1 / log(2) = 1.4426950408889634
     n = (1.4426950408889634 * z - 0.5).to(tl.int32)
     r = z - n * 0.6931471805599453
     # Compute exp(r) using 3rd order Padé approximation:
@@ -283,8 +283,13 @@ def triton_exp_kernel(z_ptr, y_ptr, n: int,  #
     # Always cast input to float32:
     z = z.to(tl.float32)
 
-    if EXP_METHOD == "triton_native_exp":
+    if EXP_METHOD == "triton_exp":
         y = tl.exp(z)
+
+    if EXP_METHOD == "triton_exp2":
+        # exp(x) = exp2(x / log(2)) = exp2((1 / log(2) * x)
+        # 1 / log(2) = 1.4426950408889634
+        y = tl.exp2(1.4426950408889634 * z)
 
     if EXP_METHOD == "triton_exp_approx":
         y = exp_approx(z)
@@ -300,7 +305,7 @@ def triton_exp_kernel(z_ptr, y_ptr, n: int,  #
 
 
 def triton_exp(exp_method: str, z: Tensor) -> Tensor:
-    assert exp_method in ["triton_native_exp", "triton_exp_approx"]
+    assert exp_method in ["triton_exp", "triton_exp2", "triton_exp_approx"]
 
     n: int = z.numel()
 
@@ -317,7 +322,7 @@ def triton_exp(exp_method: str, z: Tensor) -> Tensor:
 
 
 def exp(exp_method: str, z: Tensor) -> Tensor:
-    assert exp_method in ["torch", "triton_native_exp", "triton_exp_approx"]
+    assert exp_method in ["torch", "triton_exp", "triton_exp2", "triton_exp_approx"]
     return z.exp() if exp_method == "torch" else triton_exp(exp_method, z)
 
 
@@ -332,18 +337,20 @@ def test_exp(dtype_str: str, input_gen_str: str) -> None:
     z: Tensor = normalize_for_softmax(input_gen(str_to_dtype(dtype_str)))
 
     y_torch: Tensor = exp("torch", z)
-    y_triton_native_exp: Tensor = exp("triton_native_exp", z)
+    y_triton_exp: Tensor = exp("triton_exp", z)
+    y_triton_exp2: Tensor = exp("triton_exp2", z)
     y_triton_exp_approx: Tensor = exp("triton_exp_approx", z)
 
     eps: float = 1.2e-7
-    assert max_abs_err(y_torch, y_triton_native_exp) < eps, "Triton native exp doesn't match PyTorch exp."
+    assert max_abs_err(y_torch, y_triton_exp) < eps, "Triton exp doesn't match PyTorch exp."
+    assert max_abs_err(y_torch, y_triton_exp2) < eps, "Triton exp2 doesn't match PyTorch exp."
     assert max_abs_err(y_torch, y_triton_exp_approx) < eps, "Triton exp approximation doesn't match PyTorch exp."
-    assert max_abs_err(y_triton_native_exp,
-                       y_triton_exp_approx) < eps, "Triton native exp doesn't match Triton exp approximation."
 
 
 def benchmark_exp(dtype: torch.dtype = torch.float32) -> None:
     perf_unit: str = "GiB/s"
+    line_vals: list[str] = ["torch", "triton_exp", "triton_exp2", "triton_exp_approx"]
+    line_names: list[str] = [f"{x.replace('_', ' ').title()} ({perf_unit})" for x in line_vals]
 
     @triton.testing.perf_report(
         triton.testing.Benchmark(
@@ -351,12 +358,10 @@ def benchmark_exp(dtype: torch.dtype = torch.float32) -> None:
             x_vals=[2**i for i in range(8, 22, 1)],
             xlabel="Size",
             line_arg="provider",
-            line_vals=["torch", "triton_native_exp", "triton_exp_approx"],
-            line_names=[
-                f"PyTorch ({perf_unit})", f"Triton Native Exp ({perf_unit})", f"Triton Exp Approximation ({perf_unit})"
-            ],
+            line_vals=line_vals,
+            line_names=line_names,
             ylabel=perf_unit,
-            styles=[("blue", "-"), ("green", "-"), ("orange", "-")],
+            styles=[("blue", "-"), ("green", "-"), ("orange", "-"), ("purple", "-")],
             plot_name=f"{dtype_to_str(dtype)}_exp_performance",
             args={},
         ))
