@@ -20,6 +20,8 @@ export GFX_COMPILATION_ARCH='gfx942:xnack-'
 
 cd /triton_dev/hipBLASLt || exit 1
 
+git clean -xdf
+
 # -c flag is important, it installs hipBLASLt clients that are used in benchmarking.
 ./install.sh \
     -dc \
