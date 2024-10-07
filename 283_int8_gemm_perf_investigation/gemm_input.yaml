@@ -1,0 +1,7 @@
+# Main shape of interest:
+- {'M': 20, 'N':  1920, 'K': 13312, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+
+# Other shapes of interest:
+# - {'M': 30, 'N':  1920, 'K': 13312, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+# - {'M': 20, 'N': 17792, 'K': 13312, 'rowMajorA': 'T', 'rowMajorB': 'N'}
+# - {'M': 30, 'N': 17792, 'K': 13312, 'rowMajorA': 'T', 'rowMajorB': 'N'}
