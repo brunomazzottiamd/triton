@@ -50,21 +50,21 @@ def is_hip_available():
 def get_full_tuning_space():
     configs = []
 
-    block_mn_range = [16, 32, 64, 128, 256]
-    block_k_range = [16, 32, 64, 128, 256]
-    split_k_range = [1, 2, 4, 5, 6, 8, 10, 12, 16, 18, 24]
+    # TUNING SEARCH SPACE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    block_m_range = [16, 32]
+    block_n_range = [16, 32, 64, 128, 256]  # 512, 1024?
+    block_k_range = [16, 32, 64, 128, 256, 512]  # 1024?
+    split_k_range = [1]
     num_warps_range = [1, 2, 4, 8]
-    group_m_range = [1, 2, 4, 8, 16, 32]
-    # For now we see better perf with num_stages=0 for all gemm configs we care
-    # But keep this explicit so that we do not forget we may need to set it to
-    # other values in the future
-    num_stage_range = [0]
+    group_m_range = [1]
+    num_stage_range = [1, 2, 3, 4]
     waves_per_eu_range = [0]
-    matrix_instr_nonkdim_range = [16, 32]
+    matrix_instr_nonkdim_range = [16]  # 32
     kpack_range = [1, 2]
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    for block_m in block_mn_range:
-        for block_n in block_mn_range:
+    for block_m in block_m_range:
+        for block_n in block_n_range:
             for block_k in block_k_range:
                 for num_warps in num_warps_range:
                     for group_m in group_m_range:
