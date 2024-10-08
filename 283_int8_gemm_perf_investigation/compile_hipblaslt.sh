@@ -22,10 +22,20 @@ cd /triton_dev/hipBLASLt || exit 1
 
 git clean -xdf
 
-# -c flag is important, it installs hipBLASLt clients that are used in benchmarking.
+# install.sh flags:
+# -i|--install      - install after build
+# -d|--dependencies - install build dependencies
+# -c|--clients      - build library clients too (combines with -i & -d)
+#                     -c flag is important, it installs hipBLASLt clients that
+#                     are used in benchmarking.
 ./install.sh \
-    -dc \
+    -idc \
     --architecture="${GFX_COMPILATION_ARCH}"
+
+# It seems -i flag from install.sh already calls CMake and install everything!
+# TODO: Investigate if it's possible to get the assembly code of a GEMM after
+#       installing hipBLASLt in the system.
+exit 0
 
 cd build || exit 1
 

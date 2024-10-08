@@ -2,8 +2,6 @@
 
 echo 'Running hipBLASLt benchmark...'
 
-cd /triton_dev/hipBLASLt/build/release/clients/staging || exit 1
-
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 output_dir="${script_dir}/hipblaslt_results"
 rm --recursive --force "${output_dir}"
@@ -38,7 +36,7 @@ for shape in "${target_shapes[@]}"; do
     # So, the equation becomes:
     #     D = op(A) ⋅ op(B)
 
-    HIP_FORCE_DEV_KERNARG=1 ./hipblaslt-bench \
+    HIP_FORCE_DEV_KERNARG=1 hipblaslt-bench \
         --function matmul \
         -m "${m}" -n "${n}" -k "${k}" \
         --transA T --transB N \
