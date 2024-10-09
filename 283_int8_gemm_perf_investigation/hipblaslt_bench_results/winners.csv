@@ -1,5 +1,5 @@
 transA,transB,grouped_gemm,batch_count,m,n,k,alpha,lda,stride_a,beta,ldb,stride_b,ldc,stride_c,ldd,stride_d,a_type,b_type,c_type,d_type,compute_type,scaleA,scaleB,scaleC,scaleD,amaxD,activation_type,bias_vector,bias_type,rotating_buffer,hipblaslt-Gflops,hipblaslt-GB/s,us
-T,N,0,1,20,1920,13312,1,13312,266240,0,13312,25559040,20,38400,20,38400,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,47360.6,1115.84,21.5868
-T,N,0,1,30,1920,13312,1,13312,399360,0,13312,25559040,30,57600,30,57600,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,68000.6,1074.38,22.5519
-T,N,0,1,20,17792,13312,1,13312,266240,0,13312,236847104,20,355840,20,355840,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,78272.7,1827.21,121.037
-T,N,0,1,30,17792,13312,1,13312,399360,0,13312,236847104,30,533760,30,533760,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,115953,1806.92,122.557
+T,N,0,1,20,1920,13312,1,13312,266240,0,13312,25559040,20,38400,20,38400,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,46948.6,1106.14,21.7762
+T,N,0,1,30,1920,13312,1,13312,399360,0,13312,25559040,30,57600,30,57600,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,68236.3,1078.1,22.474
+T,N,0,1,20,17792,13312,1,13312,266240,0,13312,236847104,20,355840,20,355840,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,78319.6,1828.31,120.964
+T,N,0,1,30,17792,13312,1,13312,399360,0,13312,236847104,30,533760,30,533760,i8_r,i8_r,i8_r,i8_r,i32_r,0,0,0,0,0,none,0,non-supportedtype,512,116048,1808.4,122.456
