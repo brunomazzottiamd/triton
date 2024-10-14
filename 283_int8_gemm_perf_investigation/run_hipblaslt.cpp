@@ -1,8 +1,8 @@
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
+#include <iostream>
 #include <random>
 
 #include <hip/hip_runtime.h>
@@ -30,9 +30,9 @@
 
 // GEMM specification:
 
-static const int M = 20;
-static const int N = 1920;
-static const int K = 13312;
+static const int M = 4 /*20*/;
+static const int N = 5 /*1920*/;
+static const int K = 3 /*13312*/;
 
 static const hipDataType HIP_IN_TYPE_A = HIP_R_8I;
 static const hipDataType HIP_IN_TYPE_B = HIP_R_8I;
@@ -50,8 +50,33 @@ template <typename T>
 void gen_input(void *h_ptr, int elems, unsigned int seed = 42) {
   std::mt19937 rng(seed);
   std::uniform_int_distribution<int> dist(-5, 5);
+  auto ptr = reinterpret_cast<T *>(h_ptr);
   for (int i = 0; i < elems; ++i) {
-    (reinterpret_cast<T *>(h_ptr))[i] = static_cast<T>(dist(rng));
+    ptr[i] = static_cast<T>(dist(rng));
+  }
+}
+
+// Print matrix:
+
+template <typename T> void print_row_major(void *h_ptr, int rows, int cols) {
+  auto ptr = reinterpret_cast<T *>(h_ptr);
+  for (int i = 0; i < rows; ++i) {
+    const int row_off = i * cols;
+    for (int j = 0; j < cols; ++j) {
+      std::cout << +(ptr[row_off + j]) << "\t";
+    }
+    std::cout << "\n";
+  }
+}
+
+template <typename T> void print_col_major(void *h_ptr, int rows, int cols) {
+  auto ptr = reinterpret_cast<T *>(h_ptr);
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < cols; ++j) {
+      const int col_off = j * rows;
+      std::cout << +(ptr[col_off + i]) << "\t";
+    }
+    std::cout << "\n";
   }
 }
 
@@ -82,7 +107,14 @@ int main() {
 
   // Fill host memory:
   gen_input<hipblasLtInTypeA>(h_a, elems_a, 1983);
+  std::cout << "A(" << M << ", " << K << ") = \n";
+  print_row_major<hipblasLtInTypeA>(h_a, M, K);
   gen_input<hipblasLtInTypeB>(h_b, elems_b, 1947);
+  std::cout << "B(" << K << ", " << N << ") = \n";
+  print_col_major<hipblasLtInTypeB>(h_b, K, N);
+  memset(h_c, 0, size_c);
+  std::cout << "[init] C(" << M << ", " << N << ") = \n";
+  print_col_major<hipblasLtOutType>(h_c, M, N);
 
   // Allocate device memory:
   void *d_a, *d_b, *d_c;
@@ -114,13 +146,40 @@ int main() {
   CHECK_HIPBLASLT_ERROR(
       hipblasLtMatmulDescCreate(&matmul, HIPBLAS_COMPUTE_TYPE, HIP_OUT_TYPE));
   const hipblasOperation_t trans_a = HIPBLAS_OP_T; // transposed
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescSetAttribute(
-      matmul, HIPBLASLT_MATMUL_DESC_TRANSA, &trans_a, sizeof(std::int32_t)));
+  CHECK_HIPBLASLT_ERROR(
+      hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSA,
+                                      &trans_a, sizeof(hipblasOperation_t)));
   const hipblasOperation_t trans_b = HIPBLAS_OP_N; // non-transposed
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescSetAttribute(
-      matmul, HIPBLASLT_MATMUL_DESC_TRANSB, &trans_b, sizeof(std::int32_t)));
+  CHECK_HIPBLASLT_ERROR(
+      hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSB,
+                                      &trans_b, sizeof(hipblasOperation_t)));
+
+  // hipBLASLt workspace:
+  // TODO: Change workspace size according to the algorithm.
+  std::size_t workspace_size = 32 * 1024 * 1024;
+  void *d_workspace;
+  CHECK_HIP_ERROR(hipMalloc(&d_workspace, workspace_size));
+
+  // Perform hipBLASLt GEMM:
+  // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias ) =>
+  // D = trans(A) ⋅ B
+  // in-place matrix multiplication, i.e. C = D
+  hipblasLtOutType alpha = 1;
+  hipblasLtOutType beta = 0;
+  CHECK_HIPBLASLT_ERROR(hipblasLtMatmul(
+      hipblaslt_handle, matmul, reinterpret_cast<void *>(&alpha), d_a, mat_a,
+      d_b, mat_b, reinterpret_cast<void *>(&beta), d_c, mat_c, d_c, mat_c,
+      nullptr /* algorithm */, d_workspace, workspace_size, hip_stream));
+
+  // Copy from device to host:
+  CHECK_HIP_ERROR(
+      hipMemcpyAsync(h_c, d_c, size_c, hipMemcpyDeviceToHost, hip_stream));
+  hipStreamSynchronize(hip_stream);
+  std::cout << "[after GEMM] C(" << M << ", " << N << ") = \n";
+  print_col_major<hipblasLtOutType>(h_c, M, N);
 
   // Resource cleanup:
+  CHECK_HIP_ERROR(hipFree(d_workspace));
   CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescDestroy(matmul));
   CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutDestroy(mat_c));
   CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutDestroy(mat_b));
