@@ -30,9 +30,9 @@
 
 // GEMM specification:
 
-static const int M = 4 /*20*/;
-static const int N = 5 /*1920*/;
-static const int K = 3 /*13312*/;
+static const int M = /*4*/ 20;
+static const int N = /*5*/ 1920;
+static const int K = /*3*/ 13312;
 
 static const hipDataType HIP_IN_TYPE_A = HIP_R_8I;
 static const hipDataType HIP_IN_TYPE_B = HIP_R_8I;
@@ -133,9 +133,13 @@ int main() {
 
   // Fill host memory:
   gen_input<hipblasLtInTypeA>(h_a, elems_a, 1983);
-  print<hipblasLtInTypeA>("A", h_a, M, K, TRANS_A);
+  if (elems_a < 30) {
+    print<hipblasLtInTypeA>("A", h_a, M, K, TRANS_A);
+  }
   gen_input<hipblasLtInTypeB>(h_b, elems_b, 1947);
-  print<hipblasLtInTypeB>("B", h_b, K, N, TRANS_B);
+  if (elems_b < 30) {
+    print<hipblasLtInTypeB>("B", h_b, K, N, TRANS_B);
+  }
   memset(h_c, 0, size_c);
   // print<hipblasLtOutType>("[init] C", h_c, M, N, TRANS_C);
 
@@ -212,7 +216,9 @@ int main() {
   CHECK_HIP_ERROR(
       hipMemcpyAsync(h_c, d_c, size_c, hipMemcpyDeviceToHost, hip_stream));
   hipStreamSynchronize(hip_stream);
-  print<hipblasLtOutType>("[after GEMM] C", h_c, M, N, TRANS_C);
+  if (elems_c < 30) {
+    print<hipblasLtOutType>("[after GEMM] C", h_c, M, N, TRANS_C);
+  }
 
   // Resource cleanup:
   CHECK_HIP_ERROR(hipFree(d_workspace));
