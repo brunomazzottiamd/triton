@@ -98,6 +98,10 @@ void print(const char *desc, void *h_ptr, int rows, int cols, bool trans) {
 
 int lead_dim(int rows, int cols, bool trans) { return trans ? cols : rows; }
 
+hipblasLtOrder_t hipblaslt_order(bool trans) {
+  return trans ? HIPBLASLT_ORDER_ROW : HIPBLASLT_ORDER_COL;
+}
+
 hipblasOperation_t hipblas_op(bool trans) {
   return trans ? HIPBLAS_OP_T : HIPBLAS_OP_N;
 }
@@ -149,16 +153,30 @@ int main() {
 
   // hipBLASLt matrix layouts:
   hipblasLtMatrixLayout_t mat_a, mat_b, mat_c;
-  // row major
   CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, HIP_IN_TYPE_A, M, K,
                                                     lead_dim(M, K, TRANS_A)));
-  // column major
+  /*
+  const hipblasLtOrder_t order_a = hipblaslt_order(TRANS_A);
+  CHECK_HIPBLASLT_ERROR(
+      hipblasLtMatrixLayoutSetAttribute(mat_a, HIPBLASLT_MATRIX_LAYOUT_ORDER,
+                                        &order_a, sizeof(hipblasLtOrder_t)));
+  */
   CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, HIP_IN_TYPE_B, K, N,
                                                     lead_dim(K, N, TRANS_B)));
-  // column major (pay attention to this matrix, Triton seems to use row major
-  // layout)
+  /*
+  const hipblasLtOrder_t order_b = hipblaslt_order(TRANS_B);
+  CHECK_HIPBLASLT_ERROR(
+      hipblasLtMatrixLayoutSetAttribute(mat_b, HIPBLASLT_MATRIX_LAYOUT_ORDER,
+                                        &order_b, sizeof(hipblasLtOrder_t)));
+  */
   CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, HIP_OUT_TYPE, M, N,
                                                     lead_dim(M, N, TRANS_C)));
+  /*
+  const hipblasLtOrder_t order_c = hipblaslt_order(TRANS_C);
+  CHECK_HIPBLASLT_ERROR(
+      hipblasLtMatrixLayoutSetAttribute(mat_c, HIPBLASLT_MATRIX_LAYOUT_ORDER,
+                                        &order_c, sizeof(hipblasLtOrder_t)));
+  */
 
   // hipBLASLt GEMM descriptor:
   hipblasLtMatmulDesc_t matmul;
