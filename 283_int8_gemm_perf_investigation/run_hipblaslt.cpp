@@ -44,6 +44,10 @@ using hipblasLtOutType = hipblasLtInt32;
 
 static const hipblasComputeType_t HIPBLAS_COMPUTE_TYPE = HIPBLAS_COMPUTE_32I;
 
+static const bool TRANS_A = false /*true*/;
+static const bool TRANS_B = false;
+static const bool TRANS_C = false;
+
 // Generate random input:
 
 template <typename T>
@@ -80,6 +84,24 @@ template <typename T> void print_col_major(void *h_ptr, int rows, int cols) {
   }
 }
 
+template <typename T>
+void print(const char *desc, void *h_ptr, int rows, int cols, bool trans) {
+  std::cout << desc << "(" << rows << ", " << cols << ") = \n";
+  if (trans) {
+    print_row_major<T>(h_ptr, rows, cols);
+  } else {
+    print_col_major<T>(h_ptr, rows, cols);
+  }
+}
+
+// Other small helper functions:
+
+int lead_dim(int rows, int cols, bool trans) { return trans ? cols : rows; }
+
+hipblasOperation_t hipblas_op(bool trans) {
+  return trans ? HIPBLAS_OP_T : HIPBLAS_OP_N;
+}
+
 // Main function:
 
 int main() {
@@ -107,14 +129,11 @@ int main() {
 
   // Fill host memory:
   gen_input<hipblasLtInTypeA>(h_a, elems_a, 1983);
-  std::cout << "A(" << M << ", " << K << ") = \n";
-  print_row_major<hipblasLtInTypeA>(h_a, M, K);
+  print<hipblasLtInTypeA>("A", h_a, M, K, TRANS_A);
   gen_input<hipblasLtInTypeB>(h_b, elems_b, 1947);
-  std::cout << "B(" << K << ", " << N << ") = \n";
-  print_col_major<hipblasLtInTypeB>(h_b, K, N);
+  print<hipblasLtInTypeB>("B", h_b, K, N, TRANS_B);
   memset(h_c, 0, size_c);
-  std::cout << "[init] C(" << M << ", " << N << ") = \n";
-  print_col_major<hipblasLtOutType>(h_c, M, N);
+  // print<hipblasLtOutType>("[init] C", h_c, M, N, TRANS_C);
 
   // Allocate device memory:
   void *d_a, *d_b, *d_c;
@@ -131,25 +150,25 @@ int main() {
   // hipBLASLt matrix layouts:
   hipblasLtMatrixLayout_t mat_a, mat_b, mat_c;
   // row major
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutCreate(&mat_a, HIP_IN_TYPE_A, M, K, K));
+  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, HIP_IN_TYPE_A, M, K,
+                                                    lead_dim(M, K, TRANS_A)));
   // column major
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutCreate(&mat_b, HIP_IN_TYPE_B, K, N, K));
+  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, HIP_IN_TYPE_B, K, N,
+                                                    lead_dim(K, N, TRANS_B)));
   // column major (pay attention to this matrix, Triton seems to use row major
   // layout)
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutCreate(&mat_c, HIP_OUT_TYPE, M, N, M));
+  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, HIP_OUT_TYPE, M, N,
+                                                    lead_dim(M, N, TRANS_C)));
 
   // hipBLASLt GEMM descriptor:
   hipblasLtMatmulDesc_t matmul;
   CHECK_HIPBLASLT_ERROR(
       hipblasLtMatmulDescCreate(&matmul, HIPBLAS_COMPUTE_TYPE, HIP_OUT_TYPE));
-  const hipblasOperation_t trans_a = HIPBLAS_OP_T; // transposed
+  const hipblasOperation_t trans_a = hipblas_op(TRANS_A);
   CHECK_HIPBLASLT_ERROR(
       hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSA,
                                       &trans_a, sizeof(hipblasOperation_t)));
-  const hipblasOperation_t trans_b = HIPBLAS_OP_N; // non-transposed
+  const hipblasOperation_t trans_b = hipblas_op(TRANS_B);
   CHECK_HIPBLASLT_ERROR(
       hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSB,
                                       &trans_b, sizeof(hipblasOperation_t)));
@@ -175,8 +194,7 @@ int main() {
   CHECK_HIP_ERROR(
       hipMemcpyAsync(h_c, d_c, size_c, hipMemcpyDeviceToHost, hip_stream));
   hipStreamSynchronize(hip_stream);
-  std::cout << "[after GEMM] C(" << M << ", " << N << ") = \n";
-  print_col_major<hipblasLtOutType>(h_c, M, N);
+  print<hipblasLtOutType>("[after GEMM] C", h_c, M, N, TRANS_C);
 
   // Resource cleanup:
   CHECK_HIP_ERROR(hipFree(d_workspace));
