@@ -67,13 +67,6 @@ def _get_a8w8_configs():
     return a8w8_configs
 
 
-@triton.autotune(
-    configs=_get_a8w8_configs(),
-    key=['M', 'N', 'K'],
-)
-@triton.heuristics({
-    'EVEN_K': lambda args: args['K'] % (args['BLOCK_K']) == 0,
-})
 @triton.jit
 def _triton_gemm_a8w8_kernel(
     # Pointers to matrices
@@ -177,7 +170,68 @@ def _triton_gemm_a8w8_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col):
+@triton.jit
+def _triton_gemm_a8w8_kernel_no_autotune(
+    A,
+    B,
+    C,
+    alpha_row_ptr,
+    alpha_col_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    _triton_gemm_a8w8_kernel(A, B, C, alpha_row_ptr, alpha_col_ptr, M, N, K, stride_am, stride_ak, stride_bk, stride_bn,
+                             stride_cm, stride_cn, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
+                             GROUP_SIZE_M=GROUP_SIZE_M, EVEN_K=EVEN_K)
+
+
+@triton.autotune(
+    configs=_get_a8w8_configs(),
+    key=['M', 'N', 'K'],
+)
+@triton.heuristics({
+    'EVEN_K': lambda args: args['K'] % (args['BLOCK_K']) == 0,
+})
+@triton.jit
+def _triton_gemm_a8w8_kernel_autotune(
+    A,
+    B,
+    C,
+    alpha_row_ptr,
+    alpha_col_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    _triton_gemm_a8w8_kernel(A, B, C, alpha_row_ptr, alpha_col_ptr, M, N, K, stride_am, stride_ak, stride_bk, stride_bn,
+                             stride_cm, stride_cn, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
+                             GROUP_SIZE_M=GROUP_SIZE_M, EVEN_K=EVEN_K)
+
+
+def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col, pick_best_config: bool = False):
     # Check constraints.
     # assert a.dtype == torch.int8 and b.dtype == torch.int8, "Matrix A/B must be int8 type"
     assert a.is_contiguous(), "Matrix A must be contiguous"
@@ -188,29 +242,43 @@ def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col):
     M, K = a.shape
     K, N = b.shape
 
-    kwargs = [
-        a,
-        b,
-        out,
-        torch.squeeze(alpha_row),
-        torch.squeeze(alpha_col),
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        out.stride(0),
-        out.stride(1),
-    ]
-
     # 1D launch kernel where each block gets its own program.
     def grid(META):
         return (triton.cdiv(M, META['BLOCK_M']) * triton.cdiv(N, META['BLOCK_N']), 1, 1)
 
-    # _triton_gemm_a8w8_kernel[grid](*kwargs, enable_moe_lds_bypass=True)
-    _triton_gemm_a8w8_kernel[grid](*kwargs)
+    if not pick_best_config:
+        kwargs = [
+            a,
+            b,
+            out,
+            torch.squeeze(alpha_row),
+            torch.squeeze(alpha_col),
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            out.stride(0),
+            out.stride(1),
+        ]
+        # _triton_gemm_a8w8_kernel_[grid](*kwargs, enable_moe_lds_bypass=True)
+        _triton_gemm_a8w8_kernel_autotune[grid](*kwargs)
+    else:
+        if (M, N, K) in [(20, 1920, 13312), (30, 1920, 13312)]:
+            BLOCK_M = 16
+        elif (M, N, K) in [(20, 17792, 13312), (30, 17792, 13312)]:
+            BLOCK_M = 32
+        else:
+            print(f"There's no best config for (M, N, K) = {(M, N, K)}.")
+            sys.exit(1)
+        BLOCK_K = 256
+        _triton_gemm_a8w8_kernel_no_autotune[grid](a, b, out, torch.squeeze(alpha_row), torch.squeeze(alpha_col), M, N,
+                                                   K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), out.stride(0),
+                                                   out.stride(1), BLOCK_M=BLOCK_M, BLOCK_N=64, BLOCK_K=BLOCK_K,
+                                                   GROUP_SIZE_M=1, EVEN_K=K % BLOCK_K == 0, matrix_instr_nonkdim=16,
+                                                   kpack=2, num_warps=4, num_ctas=1, num_stages=0)
 
 
 def get_shapes():
@@ -361,13 +429,13 @@ def benchmark(M, N, K, provider):
         assert 'triton' in provider
         ms, min_ms, max_ms = triton.testing.do_bench(
             lambda: gemm_a8w8_forward(out[0], a[0], b[0], alpha_row[0], alpha_col[0]), rep=100, quantiles=quantiles)
-        print(f"M = {M}, N = {N}, K = {K}, type = {in_dtype}, best_config = {_triton_gemm_a8w8_kernel.best_config}")
+        print(f"M = {M}, N = {N}, K = {K}, type = {in_dtype}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
     perf_us = lambda x: round(x * 1e3, 2)
     # perf_us = lambda x: round(2 * M * N * K / x * 1e-9, 2)
     return perf_us(ms), perf_us(min_ms), perf_us(max_ms)
 
 
-def run_gemm_a8w8(m, n, k):
+def run_gemm_a8w8(m, n, k, pick_best_config: bool = False):
     torch.random.manual_seed(0)
     a, _ = gen_input(m, k, 'int8', False, 1, device='cuda')
     b, _ = gen_input(k, n, 'int8', True, 2, device='cuda')
@@ -375,7 +443,7 @@ def run_gemm_a8w8(m, n, k):
     alpha_col = torch.rand([1, n], dtype=torch.half).cuda()
     out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
     # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
-    gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
+    gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col, pick_best_config=pick_best_config)
 
 
 @pytest.mark.parametrize('m, n, k', get_shapes())
@@ -394,7 +462,7 @@ def test_gemm_a8w8(m, n, k):
         out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
         # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
         gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
-        print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel.best_config}")
+        print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
 
         diff = ~np.isclose(out_triton.half().cpu().numpy(), out_torch.half().cpu().numpy(), rtol=1e-2)
         assert diff.sum() < 10, f"m={m}, n={n}, k={k}"
@@ -414,17 +482,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="C = (A * B) · S int8 matrix multiplication kernel",
                                      formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
-        "mode", choices=["run", "check", "test", "bench"], help="mode of operation:\n"
+        "mode", choices=["run", "best", "bench"], help="mode of operation:\n"
         "  run: run Triton kernel for a given (M, N, K) shape\n"
-        "  check: correctness check for a given (M, N, K) shape\n"
-        "  test: full correctness check for target shapes\n"
+        "  best: run Triton kernel for a given (M, N, K) shape using the best config\n"
         "  bench: benchmark performance for target shapes\n")
     shape_group = parser.add_argument_group("kernel shape arguments")
     shape_group.add_argument("-M", type=positive_int, help="rows of matrix A")
     shape_group.add_argument("-N", type=positive_int, help="columns of matrix A / rows of matrix B")
     shape_group.add_argument("-K", type=positive_int, help="columns of matrix B")
     args = parser.parse_args()
-    if args.mode in ["run", "check"]:
+    if args.mode in ["run", "best"]:
         try:
             sizes = (args.M, args.N, args.K)
             if any(size is None for size in sizes):
@@ -435,24 +502,16 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def main() -> int:
+def main() -> None:
     args = parse_args()
-    status: int = 0
     match args.mode:
         case "run":
-            run_gemm_a8w8(args.M, args.N, args.K)
-        case "check":
-            try:
-                test_gemm_a8w8(args.M, args.N, args.K)
-            except AssertionError as assert_error:
-                print(assert_error)
-                status = 1
-        case "test":
-            status = pytest.main(["-vvv", __file__])
+            run_gemm_a8w8(args.M, args.N, args.K, pick_best_config=False)
+        case "best":
+            run_gemm_a8w8(args.M, args.N, args.K, pick_best_config=True)
         case "bench":
             benchmark.run(show_plots=False, print_data=True)
-    return status
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

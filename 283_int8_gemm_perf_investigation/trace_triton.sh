@@ -78,12 +78,12 @@ mkdir --parents "${output_dir}"
 echo 'Getting kernel dispatch ID...'
 
 kernel_program=(
-    python "${kernel_source}" run -M "${M}" -N "${N}" -K "${K}"
+    python "${kernel_source}" best -M "${M}" -N "${N}" -K "${K}"
 )
 
 dispatch_id=$(rocprofv2 \
     "${kernel_program[@]}" \
-    | grep '_triton_gemm_a8w8_kernel' \
+    | grep _triton_gemm_a8w8_kernel_no_autotune \
     | cut --delimiter ',' --fields 1 \
     | sed 's/Dispatch_ID(//;s/)//'
 )
