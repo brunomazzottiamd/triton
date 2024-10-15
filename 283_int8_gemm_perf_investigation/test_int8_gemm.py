@@ -173,7 +173,7 @@ def _triton_gemm_a8w8_kernel(
 
     # Write back the block of the output matrix C with masks.
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    c_ptrs = C + stride_cm * offs_cm[:, None] + offs_cn[None, :]
+    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     tl.store(c_ptrs, c, mask=c_mask)
 
 
@@ -343,6 +343,7 @@ def benchmark(M, N, K, provider):
         alpha_row_tmp = torch.rand([M, 1], dtype=torch.half).cuda()
         alpha_col_tmp = torch.rand([1, N], dtype=torch.half).cuda()
         out_tmp = torch.empty([M, N], dtype=torch.half, device='cuda')
+        # out_tmp = torch.empty([N, M], dtype=torch.half, device='cuda').T
 
         a.append(a_tmp)
         b.append(b_tmp)
@@ -372,7 +373,8 @@ def run_gemm_a8w8(m, n, k):
     b, _ = gen_input(k, n, 'int8', True, 2, device='cuda')
     alpha_row = torch.rand([m, 1], dtype=torch.half).cuda()
     alpha_col = torch.rand([1, n], dtype=torch.half).cuda()
-    out_triton = torch.empty([a.shape[0], b.shape[1]], dtype=torch.half, device=a.device)
+    out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
+    # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
     gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
 
 
@@ -389,7 +391,8 @@ def test_gemm_a8w8(m, n, k):
 
         gemm_a8w8 = TorchGemmA8W8()
         out_torch = gemm_a8w8(a, b, alpha_row=alpha_row, alpha_col=alpha_col)
-        out_triton = torch.empty([a.shape[0], b.shape[1]], dtype=torch.half, device=a.device)
+        out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
+        # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
         gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
         print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel.best_config}")
 
