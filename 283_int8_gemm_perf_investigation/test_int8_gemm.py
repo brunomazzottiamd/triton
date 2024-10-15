@@ -137,7 +137,7 @@ def _triton_gemm_a8w8_kernel(
     if not EVEN_K:
         loop_k -= 1
 
-    for _ in range(0, loop_k):
+    for _ in tl.range(0, loop_k, loop_unroll_factor=1):
         # Load the next block of A and B, generate a mask by checking the K dimension.
         # If it is out of bounds, set it to 0.
         a = tl.load(a_ptrs)
