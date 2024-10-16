@@ -48,6 +48,7 @@ for shape in "${target_shapes[@]}"; do
         --function matmul \
         -m "${m}" -n "${n}" -k "${k}" \
         --transA T --transB N \
+        --c_equal_d \
         --precision i8_r --compute_type i32_r \
         --cold_iters 100 --iters 1000 \
         --algo_method all \
