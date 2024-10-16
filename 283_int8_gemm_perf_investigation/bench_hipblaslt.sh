@@ -44,12 +44,26 @@ for shape in "${target_shapes[@]}"; do
     # So, the equation becomes:
     #     D = op(A) ⋅ op(B)
 
+    # Running with
+    # --a_type i8_r --b_type i8_r --c_type f16_r --d_type f16_r --compute_type i32_r
+    # and
+    # --a_type i8_r --b_type i8_r --c_type f32_r --d_type f32_r --compute_type i32_r
+    # cause segmentation fault.
+
+    # Running with
+    # --a_type i8_r --b_type i8_r --c_type i32_r --d_type i32_r --compute_type i32_r
+    # and
+    # --a_type i8_r --b_type i8_r --c_type  i8_r --d_type  i8_r --compute_type i32_r
+    # (equivalent to --precision i8_r --compute_type i32_r)
+    # work.
+    # What's the equivalent problem to the Triton kernel?
+
     HIP_FORCE_DEV_KERNARG=1 hipblaslt-bench \
         --function matmul \
         -m "${m}" -n "${n}" -k "${k}" \
         --transA T --transB N \
         --c_equal_d \
-        --precision i8_r --compute_type i32_r \
+        --a_type i8_r --b_type i8_r --c_type i8_r --d_type i8_r --compute_type i32_r \
         --cold_iters 100 --iters 1000 \
         --algo_method all \
         --print_kernel_info \
