@@ -1,6 +1,6 @@
 ROCM_DIR := /opt/rocm
 
-CXX_FLAGS := -std=c++17 -mf16c
+CXX_FLAGS := -std=c++17 -mf16c -g
 CXX_FLAGS += -Wall -Wextra -Wno-unused-result -pedantic
 CXX_FLAGS += -I$(ROCM_DIR)/include -L$(ROCM_DIR)/lib -lhipblaslt
 
@@ -15,7 +15,7 @@ $(PROGRAM): $(SOURCE)
 
 .PHONY: run
 run: $(PROGRAM)
-	./$(PROGRAM)
+	 HIP_FORCE_DEV_KERNARG=1 ./$(PROGRAM)
 
 .PHONY: clean
 clean:

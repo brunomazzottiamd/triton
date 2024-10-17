@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <algorithm>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -32,7 +33,7 @@
 
 // GEMM specification:
 
-static const hipblasOperation_t TRANS_A = HIPBLAS_OP_N /*HIPBLAS_OP_T*/;
+static const hipblasOperation_t TRANS_A = HIPBLAS_OP_T /*HIPBLAS_OP_N*/;
 static const hipblasOperation_t TRANS_B = HIPBLAS_OP_N;
 static const hipblasOperation_t TRANS_C = HIPBLAS_OP_N;
 
@@ -46,16 +47,16 @@ using hipblasLtOutTypeC = hipblasLtInt8 /*hipblasLtInt32*/;
 
 static const hipblasComputeType_t HIPBLAS_COMPUTE_TYPE = HIPBLAS_COMPUTE_32I;
 
-static const int M = 4 /*20*/;
-static const int N = 5 /*1920*/;
-static const int K = 3 /*13312*/;
+static const int M = 20;
+static const int N = 1920;
+static const int K = 13312;
 
 // Generate random input:
 
 template <typename T>
 void gen_input(void *h_ptr, int elems, unsigned int seed = 42) {
   std::mt19937 rng(seed);
-  std::uniform_int_distribution<int> dist(-5, 5);
+  std::uniform_int_distribution<int> dist(0, 6);
   auto ptr = reinterpret_cast<T *>(h_ptr);
   for (int i = 0; i < elems; ++i) {
     const auto value = static_cast<T>(dist(rng));
@@ -112,6 +113,8 @@ void print_linear(const char *desc, void *h_ptr, int elems) {
 // Main function:
 
 int main() {
+  std::cout << "(M, N, K) = (" << M << ", " << N << ", " << K << ")\n";
+
   //////// Resource acquisition:
 
   // HIP stream:
@@ -165,6 +168,15 @@ int main() {
 
   //////// hipBLASLt GEMM with C++ API:
 
+  // Get all GEMM algorithms:
+  std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
+  CHECK_HIPBLASLT_ERROR(hipblaslt_ext::getAllAlgos(
+      hipblaslt_handle, hipblaslt_ext::GemmType::HIPBLASLT_GEMM, TRANS_A,
+      TRANS_B, HIP_IN_TYPE_A, HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
+      HIPBLAS_COMPUTE_TYPE, heuristic_result));
+  std::cout << "There are " << heuristic_result.size() << " solutions.\n";
+
+  // Setup a GEMM problem:
   hipblaslt_ext::Gemm gemm(hipblaslt_handle, TRANS_A, TRANS_B, HIP_IN_TYPE_A,
                            HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
                            HIPBLAS_COMPUTE_TYPE);
@@ -180,24 +192,31 @@ int main() {
   inputs.setBeta(&beta);
   gemm.setProblem(M, N, K, 1, epilogue, inputs);
 
-  // hipBLASLt workspace:
-  // TODO: Change workspace size according to the algorithm.
-  std::size_t workspace_size = 32 * 1024 * 1024;
-  void *d_workspace;
-  CHECK_HIP_ERROR(hipMalloc(&d_workspace, workspace_size));
-  hipblaslt_ext::GemmPreferenceV2 pref;
-  pref.setMaxWorkspaceBytes(workspace_size);
-
-  // Search for hipBLASLt algorithm:
-  const int request_solutions = 1;
-  std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
-  CHECK_HIPBLASLT_ERROR(
-      gemm.algoGetHeuristic(request_solutions, pref, heuristic_result));
-
-  if (heuristic_result.empty()) {
+  // Filter valid algorithms and compute workspace size:
+  std::size_t max_workspace_size = 0;
+  std::vector<std::size_t> valid_index;
+  valid_index.reserve(heuristic_result.size());
+  for (std::size_t i = 0; i < heuristic_result.size(); ++i) {
+    std::size_t workspace_size = 0;
+    if (gemm.isAlgoSupported(heuristic_result[i].algo, workspace_size) ==
+        HIPBLAS_STATUS_SUCCESS) {
+      valid_index.push_back(i);
+      max_workspace_size = std::max(max_workspace_size, workspace_size);
+    }
+  }
+  if (valid_index.empty()) {
     std::cerr << "No valid solution found!\n";
     return 1;
   }
+  std::cout << "Found " << valid_index.size() << " supported algorithms\n";
+
+  // Allocate hipBLASLt workspace:
+  void *d_workspace;
+  CHECK_HIP_ERROR(hipMalloc(&d_workspace, max_workspace_size));
+  hipblaslt_ext::GemmPreferenceV2 pref;
+  pref.setMaxWorkspaceBytes(max_workspace_size);
+
+  // Search for hipBLASLt algorithm:
 
   // Perform hipBLASLt GEMM:
   // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias )
