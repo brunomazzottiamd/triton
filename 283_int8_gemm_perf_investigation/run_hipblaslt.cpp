@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <string>
 #include <vector>
 
 #include <hip/hip_runtime.h>
@@ -50,6 +51,22 @@ static const hipblasComputeType_t HIPBLAS_COMPUTE_TYPE = HIPBLAS_COMPUTE_32I;
 static const int M = 20;
 static const int N = 1920;
 static const int K = 13312;
+
+static const std::string SOLUTION_NAME =
+    "Cijk_Alik_Bljk_I8BH_HAI_SAV_UserArgs_MT32x96x256_MI16x16x1_SN_LDSB1_AFC1_"
+    "AFEM1_AFEM1_ASEM1_CLR1_CADS0_EPS0_GRVWA16_GRVWB16_GSU4_GSUAMB_GSUC0_"
+    "GSUWGMRR0_IU1_K1_LBSPPA256_LBSPPB256_LBSPPM0_LPA32_LPB32_LPM0_LRVW16_"
+    "LWPMn1_MIAV1_MIWT1_3_MO40_NTn1_NTA0_NTB0_NTC0_NTD0_NEPBS16_NLCA1_NLCB1_"
+    "ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SU0_SUM0_SUS0_SPO0_SRVW0_SSO0_SVW1_TLDS1_"
+    "ULSGRO0_USL1_UIOFGRO0_USFGROn1_VWA1_VWB1_WSGRA0_WSGRB0_WG32_8_1_WGM1_"
+    "WGMXCC1_WGMXCCGn1";
+static const std::string KERNEL_NAME =
+    "Cijk_Alik_Bljk_I8BH_HAI_SAV_UserArgs_MT32x96x256_MI16x16x1_SN_LDSB1_AFC1_"
+    "AFEM1_AFEM1_ASEM1_CLR1_CADS0_EPS0_GRVWA16_GRVWB16_GSUAMB_IU1_K1_LBSPPA256_"
+    "LBSPPB256_LBSPPM0_LPA32_LPB32_LPM0_LRVW16_LWPMn1_MIAV1_MIWT1_3_MO40_NTn1_"
+    "NTA0_NTB0_NTC0_NTD0_NEPBS16_NLCA1_NLCB1_ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_"
+    "SPO0_SRVW0_SSO0_SVW1_TLDS1_ULSGRO0_USL1_UIOFGRO0_USFGROn1_VWA1_VWB1_"
+    "WSGRA0_WSGRB0_WG32_8_1";
 
 // Generate random input:
 
@@ -168,6 +185,7 @@ int main() {
 
   //////// hipBLASLt GEMM with C++ API:
 
+  /* >>> NOT WORKING!
   // Get all GEMM algorithms:
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
   CHECK_HIPBLASLT_ERROR(hipblaslt_ext::getAllAlgos(
@@ -175,6 +193,7 @@ int main() {
       TRANS_B, HIP_IN_TYPE_A, HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
       HIPBLAS_COMPUTE_TYPE, heuristic_result));
   std::cout << "There are " << heuristic_result.size() << " solutions.\n";
+  */
 
   // Setup a GEMM problem:
   hipblaslt_ext::Gemm gemm(hipblaslt_handle, TRANS_A, TRANS_B, HIP_IN_TYPE_A,
@@ -192,6 +211,7 @@ int main() {
   inputs.setBeta(&beta);
   gemm.setProblem(M, N, K, 1, epilogue, inputs);
 
+  /* >>> NOT WORKING!
   // Filter valid algorithms and compute workspace size:
   std::size_t max_workspace_size = 0;
   std::vector<std::size_t> valid_index;
@@ -209,14 +229,45 @@ int main() {
     return 1;
   }
   std::cout << "Found " << valid_index.size() << " supported algorithms\n";
+  */
 
   // Allocate hipBLASLt workspace:
+  std::size_t max_workspace_size = 32 * 1024 * 1024;
   void *d_workspace;
   CHECK_HIP_ERROR(hipMalloc(&d_workspace, max_workspace_size));
   hipblaslt_ext::GemmPreferenceV2 pref;
   pref.setMaxWorkspaceBytes(max_workspace_size);
 
-  // Search for hipBLASLt algorithm:
+  // Search for solutions:
+  const int request_solutions = 5000;
+  std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
+  CHECK_HIPBLASLT_ERROR(
+      gemm.algoGetHeuristic(request_solutions, pref, heuristic_result));
+
+  if (heuristic_result.empty()) {
+    std::cerr << "No valid solution found!\n";
+    return 1;
+  }
+  std::cout << "There are " << heuristic_result.size() << " solutions.\n";
+  std::size_t kernel_index = heuristic_result.size();
+  for (std::size_t i = 0; i < heuristic_result.size(); ++i) {
+    auto algorithm = heuristic_result[i].algo;
+    const auto solution_name =
+        hipblaslt_ext::getSolutionNameFromAlgo(hipblaslt_handle, algorithm);
+    const auto kernel_name =
+        hipblaslt_ext::getKernelNameFromAlgo(hipblaslt_handle, algorithm);
+    if (solution_name == SOLUTION_NAME && kernel_name == KERNEL_NAME) {
+      std::cout << "Found kernel of interest:\n"
+                << "Solution name = " << solution_name << "\n"
+                << "Kernel name = " << kernel_name << "\n";
+      kernel_index = i;
+      break;
+    }
+  }
+  if (kernel_index == heuristic_result.size()) {
+    std::cerr << "No kernel of interest found!\n";
+    return 1;
+  }
 
   // Perform hipBLASLt GEMM:
   // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias )
@@ -227,7 +278,8 @@ int main() {
   // * C = D (in-place matrix multiplication)
   // then we have:
   // C = op(A) ⋅ op(B)
-  CHECK_HIPBLASLT_ERROR(gemm.initialize(heuristic_result[0].algo, d_workspace));
+  CHECK_HIPBLASLT_ERROR(
+      gemm.initialize(heuristic_result[kernel_index].algo, d_workspace));
   CHECK_HIPBLASLT_ERROR(gemm.run(hip_stream));
 
   //////// Copy from device to host:
