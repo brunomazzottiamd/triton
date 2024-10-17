@@ -4,8 +4,10 @@
 
 #include <iostream>
 #include <random>
+#include <vector>
 
 #include <hip/hip_runtime.h>
+#include <hipblaslt/hipblaslt-ext.hpp>
 #include <hipblaslt/hipblaslt.h>
 
 // Error handling:
@@ -30,23 +32,23 @@
 
 // GEMM specification:
 
-static const int M = 4 /*20*/;
-static const int N = 5 /*1920*/;
-static const int K = 3 /*13312*/;
+static const hipblasOperation_t TRANS_A = HIPBLAS_OP_N /*HIPBLAS_OP_T*/;
+static const hipblasOperation_t TRANS_B = HIPBLAS_OP_N;
+static const hipblasOperation_t TRANS_C = HIPBLAS_OP_N;
 
 static const hipDataType HIP_IN_TYPE_A = HIP_R_8I;
 static const hipDataType HIP_IN_TYPE_B = HIP_R_8I;
-static const hipDataType HIP_OUT_TYPE = HIP_R_32I;
+static const hipDataType HIP_OUT_TYPE_C = HIP_R_8I /*HIP_R_32I*/;
 
 using hipblasLtInTypeA = hipblasLtInt8;
 using hipblasLtInTypeB = hipblasLtInt8;
-using hipblasLtOutType = hipblasLtInt32;
+using hipblasLtOutTypeC = hipblasLtInt8 /*hipblasLtInt32*/;
 
 static const hipblasComputeType_t HIPBLAS_COMPUTE_TYPE = HIPBLAS_COMPUTE_32I;
 
-static const bool TRANS_A = false /*true*/;
-static const bool TRANS_B = false;
-static const bool TRANS_C = false;
+static const int M = 4 /*20*/;
+static const int N = 5 /*1920*/;
+static const int K = 3 /*13312*/;
 
 // Generate random input:
 
@@ -86,9 +88,10 @@ template <typename T> void print_col_major(void *h_ptr, int rows, int cols) {
 }
 
 template <typename T>
-void print(const char *desc, void *h_ptr, int rows, int cols, bool trans) {
+void print(const char *desc, void *h_ptr, int rows, int cols,
+           hipblasOperation_t trans) {
   std::cout << desc << "(" << rows << ", " << cols << ") = \n";
-  if (trans) {
+  if (trans == HIPBLAS_OP_T) {
     print_row_major<T>(h_ptr, rows, cols);
   } else {
     print_col_major<T>(h_ptr, rows, cols);
@@ -106,26 +109,16 @@ void print_linear(const char *desc, void *h_ptr, int elems) {
   std::cout << "\n";
 }
 
-// Other small helper functions:
-
-int lead_dim(int rows, int cols, bool trans) { return trans ? cols : rows; }
-
-hipblasLtOrder_t hipblaslt_order(bool trans) {
-  return trans ? HIPBLASLT_ORDER_ROW : HIPBLASLT_ORDER_COL;
-}
-
-hipblasOperation_t hipblas_op(bool trans) {
-  return trans ? HIPBLAS_OP_T : HIPBLAS_OP_N;
-}
-
 // Main function:
 
 int main() {
-  // Resource acquisition:
+  //////// Resource acquisition:
 
+  // HIP stream:
   hipStream_t hip_stream;
   CHECK_HIP_ERROR(hipStreamCreate(&hip_stream));
 
+  // hipBLASLT handle:
   hipblasLtHandle_t hipblaslt_handle;
   CHECK_HIPBLASLT_ERROR(hipblasLtCreate(&hipblaslt_handle));
 
@@ -135,7 +128,7 @@ int main() {
   const int elems_b = K * N;
   const std::size_t size_b = elems_b * sizeof(hipblasLtInTypeB);
   const int elems_c = M * N;
-  const std::size_t size_c = elems_c * sizeof(hipblasLtOutType);
+  const std::size_t size_c = elems_c * sizeof(hipblasLtOutTypeC);
 
   // Allocate host memory:
   void *h_a, *h_b, *h_c;
@@ -143,7 +136,14 @@ int main() {
   CHECK_HIP_ERROR(hipHostMalloc(&h_b, size_b));
   CHECK_HIP_ERROR(hipHostMalloc(&h_c, size_c));
 
-  // Fill host memory:
+  // Allocate device memory:
+  void *d_a, *d_b, *d_c;
+  CHECK_HIP_ERROR(hipMalloc(&d_a, size_a));
+  CHECK_HIP_ERROR(hipMalloc(&d_b, size_b));
+  CHECK_HIP_ERROR(hipMalloc(&d_c, size_c));
+
+  //////// Fill host memory:
+
   gen_input<hipblasLtInTypeA>(h_a, elems_a, 1983);
   if (elems_a < 30) {
     print_linear<hipblasLtInTypeA>("A", h_a, elems_a);
@@ -155,92 +155,75 @@ int main() {
     print<hipblasLtInTypeB>("B", h_b, K, N, TRANS_B);
   }
   memset(h_c, 0, size_c);
-  // print<hipblasLtOutType>("[init] C", h_c, M, N, TRANS_C);
 
-  // Allocate device memory:
-  void *d_a, *d_b, *d_c;
-  CHECK_HIP_ERROR(hipMalloc(&d_a, size_a));
-  CHECK_HIP_ERROR(hipMalloc(&d_b, size_b));
-  CHECK_HIP_ERROR(hipMalloc(&d_c, size_c));
+  //////// Copy from host to device:
 
-  // Copy from host to device:
   CHECK_HIP_ERROR(
       hipMemcpyAsync(d_a, h_a, size_a, hipMemcpyHostToDevice, hip_stream));
   CHECK_HIP_ERROR(
       hipMemcpyAsync(d_b, h_b, size_b, hipMemcpyHostToDevice, hip_stream));
 
-  // hipBLASLt matrix layouts:
-  hipblasLtMatrixLayout_t mat_a, mat_b, mat_c;
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_a, HIP_IN_TYPE_A, M, K,
-                                                    lead_dim(M, K, TRANS_A)));
-  /*
-  const hipblasLtOrder_t order_a = hipblaslt_order(TRANS_A);
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutSetAttribute(mat_a, HIPBLASLT_MATRIX_LAYOUT_ORDER,
-                                        &order_a, sizeof(hipblasLtOrder_t)));
-  */
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_b, HIP_IN_TYPE_B, K, N,
-                                                    lead_dim(K, N, TRANS_B)));
-  /*
-  const hipblasLtOrder_t order_b = hipblaslt_order(TRANS_B);
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutSetAttribute(mat_b, HIPBLASLT_MATRIX_LAYOUT_ORDER,
-                                        &order_b, sizeof(hipblasLtOrder_t)));
-  */
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutCreate(&mat_c, HIP_OUT_TYPE, M, N,
-                                                    lead_dim(M, N, TRANS_C)));
-  /*
-  const hipblasLtOrder_t order_c = hipblaslt_order(TRANS_C);
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatrixLayoutSetAttribute(mat_c, HIPBLASLT_MATRIX_LAYOUT_ORDER,
-                                        &order_c, sizeof(hipblasLtOrder_t)));
-  */
+  //////// hipBLASLt GEMM with C++ API:
 
-  // hipBLASLt GEMM descriptor:
-  hipblasLtMatmulDesc_t matmul;
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatmulDescCreate(&matmul, HIPBLAS_COMPUTE_TYPE, HIP_OUT_TYPE));
-  const hipblasOperation_t trans_a = hipblas_op(TRANS_A);
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSA,
-                                      &trans_a, sizeof(hipblasOperation_t)));
-  const hipblasOperation_t trans_b = hipblas_op(TRANS_B);
-  CHECK_HIPBLASLT_ERROR(
-      hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSB,
-                                      &trans_b, sizeof(hipblasOperation_t)));
+  hipblaslt_ext::Gemm gemm(hipblaslt_handle, TRANS_A, TRANS_B, HIP_IN_TYPE_A,
+                           HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
+                           HIPBLAS_COMPUTE_TYPE);
+  hipblaslt_ext::GemmEpilogueV2 epilogue;
+  hipblaslt_ext::GemmInputsV2 inputs;
+  inputs.setA(d_a);
+  inputs.setB(d_b);
+  inputs.setC(d_c);
+  inputs.setD(d_c);
+  const hipblasLtOutTypeC alpha = 1;
+  const hipblasLtOutTypeC beta = 0;
+  inputs.setAlpha(&alpha);
+  inputs.setBeta(&beta);
+  gemm.setProblem(M, N, K, 1, epilogue, inputs);
 
   // hipBLASLt workspace:
   // TODO: Change workspace size according to the algorithm.
   std::size_t workspace_size = 32 * 1024 * 1024;
   void *d_workspace;
   CHECK_HIP_ERROR(hipMalloc(&d_workspace, workspace_size));
+  hipblaslt_ext::GemmPreferenceV2 pref;
+  pref.setMaxWorkspaceBytes(workspace_size);
+
+  // Search for hipBLASLt algorithm:
+  const int request_solutions = 1;
+  std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
+  CHECK_HIPBLASLT_ERROR(
+      gemm.algoGetHeuristic(request_solutions, pref, heuristic_result));
+
+  if (heuristic_result.empty()) {
+    std::cerr << "No valid solution found!\n";
+    return 1;
+  }
 
   // Perform hipBLASLt GEMM:
-  // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias ) =>
-  // D = trans(A) ⋅ B
-  // in-place matrix multiplication, i.e. C = D
-  hipblasLtOutType alpha = 1;
-  hipblasLtOutType beta = 0;
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatmul(
-      hipblaslt_handle, matmul, reinterpret_cast<void *>(&alpha), d_a, mat_a,
-      d_b, mat_b, reinterpret_cast<void *>(&beta), d_c, mat_c, d_c, mat_c,
-      nullptr /* algorithm */, d_workspace, workspace_size, hip_stream));
+  // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias )
+  // When
+  // * alpha = 1
+  // * beta = 0
+  // * bias = activation = none
+  // * C = D (in-place matrix multiplication)
+  // then we have:
+  // C = op(A) ⋅ op(B)
+  CHECK_HIPBLASLT_ERROR(gemm.initialize(heuristic_result[0].algo, d_workspace));
+  CHECK_HIPBLASLT_ERROR(gemm.run(hip_stream));
 
-  // Copy from device to host:
+  //////// Copy from device to host:
+
   CHECK_HIP_ERROR(
       hipMemcpyAsync(h_c, d_c, size_c, hipMemcpyDeviceToHost, hip_stream));
   hipStreamSynchronize(hip_stream);
   if (elems_c < 30) {
-    print_linear<hipblasLtOutType>("[after GEMM] C", h_c, elems_c);
-    print<hipblasLtOutType>("[after GEMM] C", h_c, M, N, TRANS_C);
+    print_linear<hipblasLtOutTypeC>("[after GEMM] C", h_c, elems_c);
+    print<hipblasLtOutTypeC>("[after GEMM] C", h_c, M, N, TRANS_C);
   }
 
-  // Resource cleanup:
+  //////// Resource cleanup:
+
   CHECK_HIP_ERROR(hipFree(d_workspace));
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescDestroy(matmul));
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutDestroy(mat_c));
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutDestroy(mat_b));
-  CHECK_HIPBLASLT_ERROR(hipblasLtMatrixLayoutDestroy(mat_a));
   CHECK_HIP_ERROR(hipFree(d_c));
   CHECK_HIP_ERROR(hipFree(d_b));
   CHECK_HIP_ERROR(hipFree(d_a));
