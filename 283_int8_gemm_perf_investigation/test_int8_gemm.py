@@ -411,8 +411,8 @@ def benchmark(M, N, K, provider):
         b_tmp, _ = gen_input(K, N, in_dtype, True, 2, device='cuda')
         alpha_row_tmp = torch.rand([M, 1], dtype=torch.half).cuda()
         alpha_col_tmp = torch.rand([1, N], dtype=torch.half).cuda()
-        out_tmp = torch.empty([M, N], dtype=torch.int8, device='cuda')
-        # out_tmp = torch.empty([N, M], dtype=torch.half, device='cuda').T
+        # out_tmp = torch.empty([M, N], dtype=torch.int8, device='cuda')
+        out_tmp = torch.empty([N, M], dtype=torch.int8, device='cuda').T
 
         a.append(a_tmp)
         b.append(b_tmp)
@@ -442,8 +442,8 @@ def run_gemm_a8w8(m, n, k, pick_best_config: bool = False):
     b, _ = gen_input(k, n, 'int8', True, 2, device='cuda')
     alpha_row = torch.rand([m, 1], dtype=torch.half).cuda()
     alpha_col = torch.rand([1, n], dtype=torch.half).cuda()
-    out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
-    # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
+    # out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
+    out_triton = torch.empty([n, m], dtype=torch.int8, device=a.device).T
     gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col, pick_best_config=pick_best_config)
 
 
@@ -460,8 +460,8 @@ def test_gemm_a8w8(m, n, k):
 
         gemm_a8w8 = TorchGemmA8W8()
         out_torch = gemm_a8w8(a, b, alpha_row=alpha_row, alpha_col=alpha_col)
-        out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
-        # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
+        # out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
+        out_triton = torch.empty([n, m], dtype=torch.int8, device=a.device).T
         gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
         print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
 
