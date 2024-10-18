@@ -48,24 +48,20 @@ remove "${output_dir}" "${output_zip}"
 echo 'Compiling hipBLASLt runner...'
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-pushd "${script_dir}" || exit 1
-make clean
+pushd "${script_dir}" &> /dev/null || exit 1
 make
-popd || exit 1
+popd &> /dev/null || exit 1
 
 
 ### Get kernel dispatch ID
 
 echo 'Getting kernel dispatch ID...'
 
-# Solution index can be found in "hipblaslt_bench_results/${M}_${N}_${K}_winner.txt" file.
-# solution_index=99867
-# solution_index=613
 kernel_program=("${script_dir}/run_hipblaslt")
 
 dispatch_id=$(rocprofv2 \
     "${kernel_program[@]}" \
-    | grep --invert-match __amd_rocclr_fillBufferAligned \
+    | grep --perl-regexp '^(?!.*__amd_rocclr_fillBufferAligned).*Dispatch_ID' --max-count 1 \
     | cut --delimiter ',' --fields 1 \
     | sed 's/Dispatch_ID(//;s/)//'
 )

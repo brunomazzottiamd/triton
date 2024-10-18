@@ -60,6 +60,7 @@ static const std::string SOLUTION_NAME =
     "ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SU0_SUM0_SUS0_SPO0_SRVW0_SSO0_SVW1_TLDS1_"
     "ULSGRO0_USL1_UIOFGRO0_USFGROn1_VWA1_VWB1_WSGRA0_WSGRB0_WG32_8_1_WGM1_"
     "WGMXCC1_WGMXCCGn1";
+
 static const std::string KERNEL_NAME =
     "Cijk_Alik_Bljk_I8BH_HAI_SAV_UserArgs_MT32x96x256_MI16x16x1_SN_LDSB1_AFC1_"
     "AFEM1_AFEM1_ASEM1_CLR1_CADS0_EPS0_GRVWA16_GRVWB16_GSUAMB_IU1_K1_LBSPPA256_"
@@ -130,9 +131,12 @@ void print_linear(const char *desc, void *h_ptr, int elems) {
 // Main function:
 
 int main() {
-  std::cout << "(M, N, K) = (" << M << ", " << N << ", " << K << ")\n";
+  std::cout << "GEMM shape (M, N, K) = (" << M << ", " << N << ", " << K
+            << ")\n";
 
   //////// Resource acquisition:
+
+  std::cout << "Allocating resources...\n";
 
   // HIP stream:
   hipStream_t hip_stream;
@@ -164,19 +168,25 @@ int main() {
 
   //////// Fill host memory:
 
+  std::cout << "Filling host memory...\n";
+
   gen_input<hipblasLtInTypeA>(h_a, elems_a, 1983);
   if (elems_a < 30) {
     print_linear<hipblasLtInTypeA>("A", h_a, elems_a);
     print<hipblasLtInTypeA>("A", h_a, M, K, TRANS_A);
   }
+
   gen_input<hipblasLtInTypeB>(h_b, elems_b, 1947);
   if (elems_b < 30) {
     print_linear<hipblasLtInTypeB>("B", h_b, elems_b);
     print<hipblasLtInTypeB>("B", h_b, K, N, TRANS_B);
   }
+
   memset(h_c, 0, size_c);
 
   //////// Copy from host to device:
+
+  std::cout << "Copying from host to device...\n";
 
   CHECK_HIP_ERROR(
       hipMemcpyAsync(d_a, h_a, size_a, hipMemcpyHostToDevice, hip_stream));
@@ -185,17 +195,10 @@ int main() {
 
   //////// hipBLASLt GEMM with C++ API:
 
-  /* >>> NOT WORKING!
-  // Get all GEMM algorithms:
-  std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
-  CHECK_HIPBLASLT_ERROR(hipblaslt_ext::getAllAlgos(
-      hipblaslt_handle, hipblaslt_ext::GemmType::HIPBLASLT_GEMM, TRANS_A,
-      TRANS_B, HIP_IN_TYPE_A, HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
-      HIPBLAS_COMPUTE_TYPE, heuristic_result));
-  std::cout << "There are " << heuristic_result.size() << " solutions.\n";
-  */
+  // Set a GEMM problem:
 
-  // Setup a GEMM problem:
+  std::cout << "Setting up GEMM problem... \n";
+
   hipblaslt_ext::Gemm gemm(hipblaslt_handle, TRANS_A, TRANS_B, HIP_IN_TYPE_A,
                            HIP_IN_TYPE_B, HIP_OUT_TYPE_C, HIP_OUT_TYPE_C,
                            HIPBLAS_COMPUTE_TYPE);
@@ -211,34 +214,14 @@ int main() {
   inputs.setBeta(&beta);
   gemm.setProblem(M, N, K, 1, epilogue, inputs);
 
-  /* >>> NOT WORKING!
-  // Filter valid algorithms and compute workspace size:
-  std::size_t max_workspace_size = 0;
-  std::vector<std::size_t> valid_index;
-  valid_index.reserve(heuristic_result.size());
-  for (std::size_t i = 0; i < heuristic_result.size(); ++i) {
-    std::size_t workspace_size = 0;
-    if (gemm.isAlgoSupported(heuristic_result[i].algo, workspace_size) ==
-        HIPBLAS_STATUS_SUCCESS) {
-      valid_index.push_back(i);
-      max_workspace_size = std::max(max_workspace_size, workspace_size);
-    }
-  }
-  if (valid_index.empty()) {
-    std::cerr << "No valid solution found!\n";
-    return 1;
-  }
-  std::cout << "Found " << valid_index.size() << " supported algorithms\n";
-  */
+  // Search for solutions to the GEMM problem:
 
-  // Allocate hipBLASLt workspace:
-  std::size_t max_workspace_size = 32 * 1024 * 1024;
-  void *d_workspace;
-  CHECK_HIP_ERROR(hipMalloc(&d_workspace, max_workspace_size));
+  std::cout << "Searching for solution to the GEMM problem...\n";
+
+  const std::size_t max_workspace_size = 32 * 1024 * 1024;
   hipblaslt_ext::GemmPreferenceV2 pref;
   pref.setMaxWorkspaceBytes(max_workspace_size);
 
-  // Search for solutions:
   const int request_solutions = 5000;
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
   CHECK_HIPBLASLT_ERROR(
@@ -248,8 +231,11 @@ int main() {
     std::cerr << "No valid solution found!\n";
     return 1;
   }
+
   std::cout << "There are " << heuristic_result.size() << " solutions.\n";
-  std::size_t kernel_index = heuristic_result.size();
+  std::cout << "Searching for kernel of interest...\n";
+
+  int kernel_index = -1;
   for (std::size_t i = 0; i < heuristic_result.size(); ++i) {
     auto algorithm = heuristic_result[i].algo;
     const auto solution_name =
@@ -257,17 +243,21 @@ int main() {
     const auto kernel_name =
         hipblaslt_ext::getKernelNameFromAlgo(hipblaslt_handle, algorithm);
     if (solution_name == SOLUTION_NAME && kernel_name == KERNEL_NAME) {
-      std::cout << "Found kernel of interest:\n"
-                << "Solution name = " << solution_name << "\n"
-                << "Kernel name = " << kernel_name << "\n";
+      std::cout << "Found kernel of interest.\n";
       kernel_index = i;
       break;
     }
   }
-  if (kernel_index == heuristic_result.size()) {
+
+  if (kernel_index < 0) {
     std::cerr << "No kernel of interest found!\n";
     return 1;
   }
+
+  // Allocate hipBLASLt workspace:
+  void *d_workspace;
+  CHECK_HIP_ERROR(
+      hipMalloc(&d_workspace, heuristic_result[kernel_index].workspaceSize));
 
   // Perform hipBLASLt GEMM:
   // D = activation( alpha ⋅ op(A) ⋅ op(B) + beta ⋅ op(C) + bias )
@@ -278,21 +268,29 @@ int main() {
   // * C = D (in-place matrix multiplication)
   // then we have:
   // C = op(A) ⋅ op(B)
+
+  std::cout << "Computing GEMM...\n";
+
   CHECK_HIPBLASLT_ERROR(
       gemm.initialize(heuristic_result[kernel_index].algo, d_workspace));
   CHECK_HIPBLASLT_ERROR(gemm.run(hip_stream));
 
   //////// Copy from device to host:
 
+  std::cout << "Copying from device to host...\n";
+
   CHECK_HIP_ERROR(
       hipMemcpyAsync(h_c, d_c, size_c, hipMemcpyDeviceToHost, hip_stream));
   hipStreamSynchronize(hip_stream);
+
   if (elems_c < 30) {
     print_linear<hipblasLtOutTypeC>("[after GEMM] C", h_c, elems_c);
     print<hipblasLtOutTypeC>("[after GEMM] C", h_c, M, N, TRANS_C);
   }
 
   //////// Resource cleanup:
+
+  std::cout << "Freeing resources...\n";
 
   CHECK_HIP_ERROR(hipFree(d_workspace));
   CHECK_HIP_ERROR(hipFree(d_c));
@@ -304,5 +302,6 @@ int main() {
   CHECK_HIPBLASLT_ERROR(hipblasLtDestroy(hipblaslt_handle));
   CHECK_HIP_ERROR(hipStreamDestroy(hip_stream));
 
+  std::cout << "DONE.\n";
   return 0;
 }
