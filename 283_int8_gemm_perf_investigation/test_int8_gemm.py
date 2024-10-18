@@ -23,9 +23,10 @@ class TorchGemmA8W8(torch.nn.Module):
     def forward(self, a, b, alpha_row, alpha_col):
         # b = b.transpose(0, 1)
         x = torch.matmul(a.to(torch.float32), b.to(torch.float32))
-        scale = torch.matmul(alpha_row, alpha_col)
-        out = torch.mul(x, scale)
-        return out.to(torch.half)
+        # scale = torch.matmul(alpha_row, alpha_col)
+        # out = torch.mul(x, scale)
+        # return out.to(torch.half)
+        return x.to(torch.int8)
 
 
 def _get_a8w8_configs():
@@ -156,12 +157,12 @@ def _triton_gemm_a8w8_kernel(
     # `alpha_col_ptrs` is a block of [BLOCK_N] pointers
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    alpha_row_ptrs = alpha_row_ptr + offs_cm
-    alpha_col_ptrs = alpha_col_ptr + offs_cn
-    alpha_row = tl.load(alpha_row_ptrs, mask=offs_cm < M, other=0., cache_modifier=".cg").to(tl.float32)
-    alpha_col = tl.load(alpha_col_ptrs, mask=offs_cn < N, other=0., cache_modifier=".cg").to(tl.float32)
-    accumulator = accumulator * alpha_row[:, None]
-    accumulator = accumulator * alpha_col[None, :]
+    # alpha_row_ptrs = alpha_row_ptr + offs_cm
+    # alpha_col_ptrs = alpha_col_ptr + offs_cn
+    # alpha_row = tl.load(alpha_row_ptrs, mask=offs_cm < M, other=0., cache_modifier=".cg").to(tl.float32)
+    # alpha_col = tl.load(alpha_col_ptrs, mask=offs_cn < N, other=0., cache_modifier=".cg").to(tl.float32)
+    # accumulator = accumulator * alpha_row[:, None]
+    # accumulator = accumulator * alpha_col[None, :]
     c = accumulator.to(C.dtype.element_ty)
 
     # Write back the block of the output matrix C with masks.
@@ -236,8 +237,8 @@ def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col, pick_best_config: bool = 
     # assert a.dtype == torch.int8 and b.dtype == torch.int8, "Matrix A/B must be int8 type"
     assert a.is_contiguous(), "Matrix A must be contiguous"
     # assert b.is_contiguous(), "Matrix B must be contiguous"
-    assert out.dtype == torch.float16 or out.dtype == torch.bfloat16, "Output type must be float16 or bfloat16"
-    assert out.dtype == alpha_row.dtype and out.dtype == alpha_col.dtype, "Output type must match scale type"
+    # assert out.dtype == torch.float16 or out.dtype == torch.bfloat16, "Output type must be float16 or bfloat16"
+    # assert out.dtype == alpha_row.dtype and out.dtype == alpha_col.dtype, "Output type must match scale type"
     # assert a.shape[1] == b.shape[1], "Matrix B must be transposed"
     M, K = a.shape
     K, N = b.shape
@@ -333,9 +334,9 @@ def gen_input(M, N, ty_name, needTrans, seed, device='cuda'):
 
     if ty_name == 'int8':
         if needTrans:
-            raw_data = torch.randint(-20, 20, (N, M), dtype=torch.int8, device='cuda').T
+            raw_data = torch.randint(0, 6, (N, M), dtype=torch.int8, device='cuda').T
         else:
-            raw_data = torch.randint(-20, 20, (M, N), dtype=torch.int8, device='cuda')
+            raw_data = torch.randint(0, 6, (M, N), dtype=torch.int8, device='cuda')
 
         return raw_data, raw_data.to(torch.half)
 
@@ -410,7 +411,7 @@ def benchmark(M, N, K, provider):
         b_tmp, _ = gen_input(K, N, in_dtype, True, 2, device='cuda')
         alpha_row_tmp = torch.rand([M, 1], dtype=torch.half).cuda()
         alpha_col_tmp = torch.rand([1, N], dtype=torch.half).cuda()
-        out_tmp = torch.empty([M, N], dtype=torch.half, device='cuda')
+        out_tmp = torch.empty([M, N], dtype=torch.int8, device='cuda')
         # out_tmp = torch.empty([N, M], dtype=torch.half, device='cuda').T
 
         a.append(a_tmp)
@@ -441,7 +442,7 @@ def run_gemm_a8w8(m, n, k, pick_best_config: bool = False):
     b, _ = gen_input(k, n, 'int8', True, 2, device='cuda')
     alpha_row = torch.rand([m, 1], dtype=torch.half).cuda()
     alpha_col = torch.rand([1, n], dtype=torch.half).cuda()
-    out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
+    out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
     # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
     gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col, pick_best_config=pick_best_config)
 
@@ -459,7 +460,7 @@ def test_gemm_a8w8(m, n, k):
 
         gemm_a8w8 = TorchGemmA8W8()
         out_torch = gemm_a8w8(a, b, alpha_row=alpha_row, alpha_col=alpha_col)
-        out_triton = torch.empty([m, n], dtype=torch.half, device=a.device)
+        out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
         # out_triton = torch.empty([n, m], dtype=torch.half, device=a.device).T
         gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
         print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
