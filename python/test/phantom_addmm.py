@@ -25,6 +25,9 @@ import triton
 
 # @manual=//triton:triton
 import triton.language as tl
+import argparse
+import sys
+
 
 ENABLE_FULL_TURNING_SPACE = False
 
@@ -40,42 +43,50 @@ def get_mm_configs() -> List[triton.Config]:
             waves_per_eu_range = [0]
             kpack_range = [1, 2]
             num_warps_range = [4, 8]
-            num_stage_range = [0]
-        else:
-            block_m_range = [256]
-            block_n_range = [256]
-            block_k_range = [32]
-            group_m_range = [8]
-            matrix_instr_nonkdim_range = [16]
-            waves_per_eu_range = [0]
-            kpack_range = [2]
-            num_warps_range = [8]
-            num_stage_range = [0]
+            num_stage_range = [2]
+        # else:
+        #     block_m_range = [256]
+        #     block_n_range = [256]
+        #     block_k_range = [32]
+        #     group_m_range = [8]
+        #     matrix_instr_nonkdim_range = [16]
+        #     waves_per_eu_range = [0]
+        #     kpack_range = [2]
+        #     num_warps_range = [8]
+        #     num_stage_range = [0]
 
-        return [
-            triton.Config(
-                {
-                    "BLOCK_M": block_m,
-                    "BLOCK_N": block_n,
-                    "BLOCK_K": block_k,
-                    "GROUP_M": group_m,
-                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
-                    "waves_per_eu": waves_per_eu,
-                    "kpack": kpack,
-                },
-                num_stages=num_stages,
-                num_warps=num_warps,
-            )
-            for block_m in block_m_range
-            for block_n in block_n_range
-            for block_k in block_k_range
-            for group_m in group_m_range
-            for matrix_instr_nonkdim in matrix_instr_nonkdim_range
-            for waves_per_eu in waves_per_eu_range
-            for kpack in kpack_range
-            for num_stages in num_stage_range
-            for num_warps in num_warps_range
-        ]
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "GROUP_M": group_m,
+                        "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                        "waves_per_eu": waves_per_eu,
+                        "kpack": kpack,
+                    },
+                    num_stages=num_stages,
+                    num_warps=num_warps,
+                )
+                for block_m in block_m_range
+                for block_n in block_n_range
+                for block_k in block_k_range
+                for group_m in group_m_range
+                for matrix_instr_nonkdim in matrix_instr_nonkdim_range
+                for waves_per_eu in waves_per_eu_range
+                for kpack in kpack_range
+                for num_stages in num_stage_range
+                for num_warps in num_warps_range
+            ]
+        else:
+            configs = [
+                triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 4, "matrix_instr_nonkdim": 16, "waves_per_eu": 0, "kpack": 1}, num_warps=8, num_stages=2),
+                triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 8, "matrix_instr_nonkdim": 16, "waves_per_eu": 0, "kpack": 2}, num_warps=8, num_stages=2),
+                triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 4, "matrix_instr_nonkdim": 16, "waves_per_eu": 0, "kpack": 2}, num_warps=8, num_stages=2),
+                triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 32, "GROUP_M": 8, "matrix_instr_nonkdim": 16, "waves_per_eu": 0, "kpack": 1}, num_warps=8, num_stages=2),
+            ]
+            return configs
     else:
         return [
             triton.Config(
@@ -277,3 +288,84 @@ class _AddMmFunction(torch.autograd.Function):
         )
         return z
 
+def matmul_ref(x, w, y):
+    return torch.matmul(x.to(torch.float), w.to(torch.float)) + y.to(torch.float)
+
+
+# def get_x_vals():
+#     x_vals = [(1024 * v, 1024 * v, 1024 * v) for v in range (1, 9)]
+#     x_vals += [(4864, 4096, 8192), (9728, 8192, 65536)]
+#     return x_vals
+
+
+def get_x_vals():
+    x_vals = [(20196, 512, 1536), 
+              (171792, 512, 1536),
+              (173318, 512, 1536),
+              ]
+    return x_vals
+
+
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
+        x_vals=get_x_vals(),
+        # x_vals=[
+        #     (1024, 1024, 1024),
+        #     (2048, 2048, 2048),
+        #     (4096, 4096, 4096),
+        #     (8192, 8192, 8192),
+        #     (9728, 8192, 65536)
+        # ],  # Different possible values for `x_name`
+        line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
+        # Possible values for `line_arg`
+        line_vals=['rocblas', 'triton'],
+        # Label name for the lines
+        line_names=["rocBLAS", "Triton"],
+        # Line styles
+        styles=[('green', '-'), ('blue', '-')],
+        ylabel="TFLOPS",  # Label name for the y-axis
+        plot_name="matmul-performance",  # Name for the plot, used also as a file name for saving the plot.
+        args={},
+    ))
+def benchmark(M, N, K, provider):
+    a = torch.randn((M, K), device='cuda', dtype=torch.float16)
+    b = torch.randn((K, N), device='cuda', dtype=torch.float16)
+    y = torch.randn((M, N), device='cuda', dtype=torch.float16)
+    quantiles = [0.5, 0.2, 0.8]
+    phantom_addmm = _AddMmFunction.apply
+    if provider == 'triton':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm(a, b, y), quantiles=quantiles)
+        print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd.best_config})')
+    if provider == 'rocblas':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_ref(a, b, y), quantiles=quantiles)
+        # global verbose
+        # if verbose:
+        #     print(f'SIZE: {M},{N},{K}   Best tuning config: ({matmul_kernel.get_best_config()})')
+        #     print(f'SIZE: {M},{N},{K} TIME: {ms:.3f} ms, {min_ms:.3f} min_ms, {max_ms:.3f} max_ms')
+    perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
+    return perf(ms), perf(max_ms), perf(min_ms)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        prog="GEMM tutorial example",
+        allow_abbrev=False,
+    )
+
+    parser.add_argument("-v", action='store_true', default=False, help="Print out the best tuning config")
+    args = parser.parse_args()
+
+    return args
+
+
+def main():
+    # assign to a global verbose var to indicate whether print
+    # best tuning config
+    global verbose
+    args = parse_args()
+    verbose=args.v
+    benchmark.run(show_plots=True, print_data=True)
+
+if __name__ == '__main__':
+    sys.exit(main())
