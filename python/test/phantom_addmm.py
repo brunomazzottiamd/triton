@@ -301,17 +301,18 @@ class _AddMmFunction(torch.autograd.Function):
         return z
 
 def torch_matmul_ref(x, w, y):
-    return torch.matmul(x.to(torch.float), w.to(torch.float)) + y.to(torch.float)
+    return torch.matmul(x, w) + y
 
 
 def get_shapes():
     shapes = [
-              (20196, 512, 1536), 
-              (171792, 512, 1536),
-              (173318, 512, 1536),
-            #   (20224, 512, 1536), 
-            #   (172032, 512, 1536),
-            #   (173568, 512, 1536),
+            (20196, 512, 1536), 
+            (171792, 512, 1536),
+            (173318, 512, 1536),
+        # M is aligned to 256 for above shapes
+        #   (20224, 512, 1536), 
+        #   (172032, 512, 1536),
+        #   (173568, 512, 1536),
               ]
     return shapes
 
@@ -383,8 +384,7 @@ def test_addmm(m, n, k):
 
         phantom_addmm = _AddMmFunction.apply
         out_torch = torch_matmul_ref(x, w, y)
-        out_triton = torch.empty((m, n), dtype=dtype, device=x.device)
-        phantom_addmm(x, w, y, z)
+        out_triton = phantom_addmm(x, w, y, z)
         print(f"M = {m}, N = {n}, K = {k}, best_config = {_addmm_fwd.best_config}")
 
         print(f"out_torch = {out_torch}")
