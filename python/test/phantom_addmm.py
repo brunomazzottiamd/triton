@@ -27,9 +27,10 @@ import triton
 import triton.language as tl
 import argparse
 import sys
+import pytest
 
 
-ENABLE_FULL_TURNING_SPACE = True
+ENABLE_FULL_TURNING_SPACE = False
 
 
 def get_mm_configs() -> List[triton.Config]:
@@ -214,14 +215,10 @@ def _addmm_fwd(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_m = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)) % M
-    offs_n = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
+    offs_m = (pid_m.to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)) % M
+    offs_n = (pid_n.to(tl.int64) * BLOCK_N + tl.arange(0, BLOCK_N)) % N
     offs_k = tl.arange(0, BLOCK_K)
-    # mask_m = offs_m < M
-    # mask_n = offs_n < N
-    # x_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_xm
     x_ptrs = x_ptr + (offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk)
-    # w_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_wn
     w_ptrs = w_ptr + (offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn)
 
     loop_k = tl.cdiv(K, BLOCK_K)
@@ -240,13 +237,14 @@ def _addmm_fwd(
         k = loop_k
         offs_k = k * BLOCK_K + tl.arange(0, BLOCK_K)
         x_ptrs = x_ptr + (offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk)
-        w_ptrs = w_ptr + (offs_n[None, :] * stride_bn + offs_k[:, None] * stride_bk)
+        w_ptrs = w_ptr + (offs_n[None, :] * stride_wn + offs_k[:, None] * stride_wk)
         x = tl.load(x_ptrs, mask=offs_k[None, :] < K, other=0.)
         w = tl.load(w_ptrs, mask=offs_k[:, None] < K, other=0.)
         # We accumulate along the K dimension.
         accumulator += tl.dot(x, w)
 
     z = accumulator.to(z_ptr.dtype.element_ty)
+    mask_yz = (offs_m[:, None] < M) and (offs_n[None,:] < N)
     if False: # BROADCAST_Y:
         # y is a vector, broadcast to add to z
         y_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_yn
@@ -254,10 +252,10 @@ def _addmm_fwd(
         y = tl.load(y_ptrs, mask=mask_n)
     else:
         y_ptrs = y_ptr + stride_ym * offs_m[:, None] + stride_yn * offs_n[None, :]
-        y = tl.load(y_ptrs)
+        y = tl.load(y_ptrs, mask=mask_yz)
     z = z + y
     z_ptrs = z_ptr + stride_zm * offs_m[:, None] + stride_zn * offs_n[None, :]
-    tl.store(z_ptrs, z)
+    tl.store(z_ptrs, z, mask=mask_yz)
 
 
 class _AddMmFunction(torch.autograd.Function):
@@ -268,12 +266,13 @@ class _AddMmFunction(torch.autograd.Function):
         x: torch.Tensor,
         w: torch.Tensor,
         y: torch.Tensor,
+        z: torch.Tensor,
     ) -> torch.Tensor:
         M, K = x.shape
         KB, N = w.shape
         assert K == KB, f"incompatible dimensions {K}, {KB}"
 
-        z = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        # z = torch.empty((M, N), device=x.device, dtype=x.dtype)
         if M == 0 or N == 0:
             return z
 
@@ -298,37 +297,29 @@ class _AddMmFunction(torch.autograd.Function):
             z.stride(1),
             ALLOW_TF32=torch.backends.cuda.matmul.allow_tf32,
         )
+
         return z
 
-def matmul_ref(x, w, y):
+def torch_matmul_ref(x, w, y):
     return torch.matmul(x.to(torch.float), w.to(torch.float)) + y.to(torch.float)
 
 
-# def get_x_vals():
-#     x_vals = [(1024 * v, 1024 * v, 1024 * v) for v in range (1, 9)]
-#     x_vals += [(4864, 4096, 8192), (9728, 8192, 65536)]
-#     return x_vals
-
-
-def get_x_vals():
-    x_vals = [(20196, 512, 1536), 
+def get_shapes():
+    shapes = [
+              (20196, 512, 1536), 
               (171792, 512, 1536),
               (173318, 512, 1536),
+            #   (20224, 512, 1536), 
+            #   (172032, 512, 1536),
+            #   (173568, 512, 1536),
               ]
-    return x_vals
+    return shapes
 
 
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['M', 'N', 'K'],  # Argument names to use as an x-axis for the plot
-        x_vals=get_x_vals(),
-        # x_vals=[
-        #     (1024, 1024, 1024),
-        #     (2048, 2048, 2048),
-        #     (4096, 4096, 4096),
-        #     (8192, 8192, 8192),
-        #     (9728, 8192, 65536)
-        # ],  # Different possible values for `x_name`
+        x_vals=get_shapes(),
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
         line_vals=['rocblas', 'triton'],
@@ -341,20 +332,17 @@ def get_x_vals():
         args={},
     ))
 def benchmark(M, N, K, provider):
-    a = torch.randn((M, K), device='cuda', dtype=torch.float16)
-    b = torch.randn((K, N), device='cuda', dtype=torch.float16)
-    y = torch.randn((M, N), device='cuda', dtype=torch.float16)
+    x = torch.randn((M, K), device='cuda', dtype=torch.bfloat16)
+    w = torch.randn((K, N), device='cuda', dtype=torch.bfloat16)
+    y = torch.randn((M, N), device='cuda', dtype=torch.bfloat16)
+    z = torch.empty_like(y)
     quantiles = [0.5, 0.2, 0.8]
     phantom_addmm = _AddMmFunction.apply
     if provider == 'triton':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm(a, b, y), quantiles=quantiles)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm(x, w, y, z), quantiles=quantiles)
         print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd.best_config})')
     if provider == 'rocblas':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: matmul_ref(a, b, y), quantiles=quantiles)
-        # global verbose
-        # if verbose:
-        #     print(f'SIZE: {M},{N},{K}   Best tuning config: ({matmul_kernel.get_best_config()})')
-        #     print(f'SIZE: {M},{N},{K} TIME: {ms:.3f} ms, {min_ms:.3f} min_ms, {max_ms:.3f} max_ms')
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_matmul_ref(x, w, y), quantiles=quantiles)
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
 
@@ -381,3 +369,25 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
+
+@pytest.mark.parametrize('m, n, k', get_shapes())
+def test_addmm(m, n, k):
+    torch.random.manual_seed(0)
+    dtype = torch.bfloat16
+    with torch.no_grad():
+        x = torch.randn((m, k), device='cuda', dtype=dtype)
+        w = torch.randn((k, n), device='cuda', dtype=dtype)
+        y = torch.randn((m, n), device='cuda', dtype=dtype)
+        z = torch.empty_like(y)
+
+        phantom_addmm = _AddMmFunction.apply
+        out_torch = torch_matmul_ref(x, w, y)
+        out_triton = torch.empty((m, n), dtype=dtype, device=x.device)
+        phantom_addmm(x, w, y, z)
+        print(f"M = {m}, N = {n}, K = {k}, best_config = {_addmm_fwd.best_config}")
+
+        print(f"out_torch = {out_torch}")
+        print(f"out_triton = {out_triton}")
+
+        assert torch.allclose(out_triton.to(torch.float32), out_torch.to(torch.float32))
