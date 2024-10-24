@@ -267,6 +267,8 @@ def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col, pick_best_config: bool = 
         # _triton_gemm_a8w8_kernel_[grid](*kwargs, enable_moe_lds_bypass=True)
         _triton_gemm_a8w8_kernel_autotune[grid](*kwargs)
     else:
+        # M = 20, N = 1920, K = 13312
+        # BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 512, GROUP_SIZE_M: 1, matrix_instr_nonkdim: 16, kpack: 2, num_warps: 2, num_ctas: 1, num_stages: 0, maxnreg: None
         if (M, N, K) in [(20, 1920, 13312), (30, 1920, 13312)]:
             BLOCK_M = 16
         elif (M, N, K) in [(20, 17792, 13312), (30, 17792, 13312)]:
@@ -274,12 +276,12 @@ def gemm_a8w8_forward(out, a, b, alpha_row, alpha_col, pick_best_config: bool = 
         else:
             print(f"There's no best config for (M, N, K) = {(M, N, K)}.")
             sys.exit(1)
-        BLOCK_K = 256
+        BLOCK_K = 512
         _triton_gemm_a8w8_kernel_no_autotune[grid](a, b, out, torch.squeeze(alpha_row), torch.squeeze(alpha_col), M, N,
                                                    K, a.stride(0), a.stride(1), b.stride(0), b.stride(1), out.stride(0),
-                                                   out.stride(1), BLOCK_M=BLOCK_M, BLOCK_N=64, BLOCK_K=BLOCK_K,
+                                                   out.stride(1), BLOCK_M=BLOCK_M, BLOCK_N=32, BLOCK_K=BLOCK_K,
                                                    GROUP_SIZE_M=1, EVEN_K=K % BLOCK_K == 0, matrix_instr_nonkdim=16,
-                                                   kpack=2, num_warps=4, num_ctas=1, num_stages=0)
+                                                   kpack=2, num_warps=2, num_ctas=1, num_stages=0)
 
 
 def get_shapes():
