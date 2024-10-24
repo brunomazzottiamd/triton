@@ -462,10 +462,9 @@ def benchmark(M, N, K, provider):
     phantom_addmm_baseline = _AddMmBaselineFunction.apply
     phantom_addmm_optimized = _AddMmOptimizedFunction.apply
 
-    ms, min_ms, max_ms = 10, 10, 10
-    # if provider == 'baseline':
-    #     ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_baseline(x, w, y, z), quantiles=quantiles)
-    #     print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_baseline.best_config})')
+    if provider == 'baseline':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_baseline(x, w, y, z), quantiles=quantiles)
+        print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_baseline.best_config})')
     if provider == 'optimized':
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_optimized(x, w_optim, y, z), quantiles=quantiles)
         print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_optimized.best_config})')
