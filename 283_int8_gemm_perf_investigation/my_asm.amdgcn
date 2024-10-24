@@ -711,6 +711,9 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	v_add_u32_e32 v43, 0, v43
 	v_add_u32_e32 v44, 0, v44
 	v_add_u32_e32 v45, 0, v45
+; >>>>>>>>>>>>>>>>>>>
+; >>>>>>>> LOOP START
+; >>>>>>>>>>>>>>>>>>>
 .LBB0_26:                               ; =>This Inner Loop Header: Depth=1
 	; sched_barrier mask(0x00000000)
 	.loc	2 137 20                        ; test_int8_gemm.py:137:20
@@ -841,6 +844,9 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	s_add_i32 s2, s2, -1
 	s_cmp_lg_u32 s2, 0
 	s_cbranch_scc1 .LBB0_26
+; <<<<<<<<<<<<<<<<<
+; LOOP END <<<<<<<<
+; <<<<<<<<<<<<<<<<<
 .LBB0_27:                               ; %._crit_edge
 	.loc	2 0 33 is_stmt 0                ; test_int8_gemm.py:0:33
 	s_nop 1
