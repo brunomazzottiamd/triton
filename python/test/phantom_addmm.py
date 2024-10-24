@@ -30,78 +30,6 @@ import sys
 import pytest
 
 
-@triton.jit
-def _addmm_fwd_nochange(
-    x_ptr,
-    w_ptr,
-    y_ptr,
-    z_ptr,
-    M,
-    N,
-    K,
-    stride_xm,
-    stride_xk,
-    stride_wk,
-    stride_wn,
-    stride_ym,
-    stride_yn,
-    stride_zm,
-    stride_zn,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    ALLOW_TF32: tl.constexpr,
-    # BROADCAST_Y: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(M, BLOCK_M)
-    num_pid_n = tl.cdiv(N, BLOCK_N)
-    num_pid_in_group = GROUP_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
-    pid_m = first_pid_m + (pid % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
-
-    offs_m = tl.arange(0, BLOCK_M)
-    offs_k = tl.arange(0, BLOCK_K)
-    offs_n = tl.arange(0, BLOCK_N)
-    mask_m = (pid_m * BLOCK_M + offs_m)[:, None] < M
-    mask_n = (pid_n * BLOCK_N + offs_n)[None, :] < N
-    x_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_xm
-    x_ptrs = x_ptr + (offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk)
-    w_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_wn
-    w_ptrs = w_ptr + (offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn)
-    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        mask_k = offs_k[None, :] < K - k * BLOCK_K
-        x = tl.load(x_ptrs, mask=mask_k & mask_m, other=0.0)
-        mask_k = offs_k[:, None] < K - k * BLOCK_K
-        w = tl.load(w_ptrs, mask=mask_k & mask_n, other=0.0)
-        accumulator += tl.dot(x, w, allow_tf32=ALLOW_TF32)
-        x_ptrs += BLOCK_K * stride_xk
-        w_ptrs += BLOCK_K * stride_wk
-
-    z = accumulator.to(z_ptr.dtype.element_ty)
-    z_mask = mask_m & mask_n
-    if False: # BROADCAST_Y:
-        # y is a vector, broadcast to add to z
-        y_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_yn
-        y_ptrs = y_ptr + stride_yn * offs_n[None, :]
-        y = tl.load(y_ptrs, mask=mask_n)
-    else:
-        y_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_ym
-        y_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_yn
-        y_ptrs = y_ptr + stride_ym * offs_m[:, None] + stride_yn * offs_n[None, :]
-        y = tl.load(y_ptrs, mask=z_mask)
-    z = z + y
-    z_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_zm
-    z_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_zn
-    z_ptrs = z_ptr + stride_zm * offs_m[:, None] + stride_zn * offs_n[None, :]
-    tl.store(z_ptrs, z, mask=z_mask)
-
-
 ENABLE_FULL_TURNING_SPACE = True
 
 
@@ -249,11 +177,88 @@ def get_mm_configs() -> List[triton.Config]:
     configs=get_mm_configs(),
     key=["M", "N", "K"],
 )
+@triton.jit
+def _addmm_fwd_baseline(
+    x_ptr,
+    w_ptr,
+    y_ptr,
+    z_ptr,
+    M,
+    N,
+    K,
+    stride_xm,
+    stride_xk,
+    stride_wk,
+    stride_wn,
+    stride_ym,
+    stride_yn,
+    stride_zm,
+    stride_zn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    ALLOW_TF32: tl.constexpr,
+    # BROADCAST_Y: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    num_pid_in_group = GROUP_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
+    pid_m = first_pid_m + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    offs_m = tl.arange(0, BLOCK_M)
+    offs_k = tl.arange(0, BLOCK_K)
+    offs_n = tl.arange(0, BLOCK_N)
+    mask_m = (pid_m * BLOCK_M + offs_m)[:, None] < M
+    mask_n = (pid_n * BLOCK_N + offs_n)[None, :] < N
+    x_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_xm
+    x_ptrs = x_ptr + (offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk)
+    w_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_wn
+    w_ptrs = w_ptr + (offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn)
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        mask_k = offs_k[None, :] < K - k * BLOCK_K
+        x = tl.load(x_ptrs, mask=mask_k & mask_m, other=0.0)
+        mask_k = offs_k[:, None] < K - k * BLOCK_K
+        w = tl.load(w_ptrs, mask=mask_k & mask_n, other=0.0)
+        accumulator += tl.dot(x, w, allow_tf32=ALLOW_TF32)
+        x_ptrs += BLOCK_K * stride_xk
+        w_ptrs += BLOCK_K * stride_wk
+
+    z = accumulator.to(z_ptr.dtype.element_ty)
+    z_mask = mask_m & mask_n
+    if False: # BROADCAST_Y:
+        # y is a vector, broadcast to add to z
+        y_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_yn
+        y_ptrs = y_ptr + stride_yn * offs_n[None, :]
+        y = tl.load(y_ptrs, mask=mask_n)
+    else:
+        y_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_ym
+        y_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_yn
+        y_ptrs = y_ptr + stride_ym * offs_m[:, None] + stride_yn * offs_n[None, :]
+        y = tl.load(y_ptrs, mask=z_mask)
+    z = z + y
+    z_ptr += pid_m.to(tl.int64) * BLOCK_M * stride_zm
+    z_ptr += pid_n.to(tl.int64) * BLOCK_N * stride_zn
+    z_ptrs = z_ptr + stride_zm * offs_m[:, None] + stride_zn * offs_n[None, :]
+    tl.store(z_ptrs, z, mask=z_mask)
+
+
+
+@triton.autotune(
+    configs=get_mm_configs(),
+    key=["M", "N", "K"],
+)
 @triton.heuristics({
     'EVEN_K': lambda args: args['K'] % (args['BLOCK_K']) == 0,    
 })
 @triton.jit
-def _addmm_fwd(
+def _addmm_fwd_optimized(
     x_ptr,
     w_ptr,
     y_ptr,
@@ -329,8 +334,7 @@ def _addmm_fwd(
     z_ptrs = z_ptr + stride_zm * offs_m[:, None] + stride_zn * offs_n[None, :]
     tl.store(z_ptrs, z, mask=mask_yz)
 
-
-class _AddMmFunction(torch.autograd.Function):
+class _AddMmBaselineFunction(torch.autograd.Function):
     @staticmethod
     # pyre-ignore[14]
     def forward(
@@ -351,7 +355,49 @@ class _AddMmFunction(torch.autograd.Function):
         def grid(META):
             return (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
 
-        _addmm_fwd[grid](
+        _addmm_fwd_baseline[grid](
+            x,
+            w,
+            y,
+            z,
+            M,
+            N,
+            K,
+            x.stride(0),
+            x.stride(1),
+            w.stride(0),
+            w.stride(1),
+            y.stride(0),
+            y.stride(1),
+            z.stride(0),
+            z.stride(1),
+            ALLOW_TF32=torch.backends.cuda.matmul.allow_tf32,
+        )
+
+        return z
+
+class _AddMmOptimizedFunction(torch.autograd.Function):
+    @staticmethod
+    # pyre-ignore[14]
+    def forward(
+        ctx,
+        x: torch.Tensor,
+        w: torch.Tensor,
+        y: torch.Tensor,
+        z: torch.Tensor,
+    ) -> torch.Tensor:
+        M, K = x.shape
+        KB, N = w.shape
+        assert K == KB, f"incompatible dimensions {K}, {KB}"
+
+        # z = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        if M == 0 or N == 0:
+            return z
+
+        def grid(META):
+            return (triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),)
+
+        _addmm_fwd_optimized[grid](
             x,
             w,
             y,
@@ -395,9 +441,9 @@ def get_shapes():
         x_vals=get_shapes(),
         line_arg='provider',  # Argument name whose value corresponds to a different line in the plot
         # Possible values for `line_arg`
-        line_vals=['rocblas', 'triton'],
+        line_vals=['baseline', 'optimized'],
         # Label name for the lines
-        line_names=["rocBLAS", "Triton"],
+        line_names=["Baseline", "Optimized"],
         # Line styles
         styles=[('green', '-'), ('blue', '-')],
         ylabel="TFLOPS",  # Label name for the y-axis
@@ -406,16 +452,19 @@ def get_shapes():
     ))
 def benchmark(M, N, K, provider):
     x = torch.randn((M, K), device='cuda', dtype=torch.bfloat16)
-    w = torch.randn((K, N), device='cuda', dtype=torch.bfloat16)
+    w = torch.randn((N, K), device='cuda', dtype=torch.bfloat16)
+    w = w.T
     y = torch.randn((M, N), device='cuda', dtype=torch.bfloat16)
     z = torch.empty_like(y)
     quantiles = [0.5, 0.2, 0.8]
-    phantom_addmm = _AddMmFunction.apply
-    if provider == 'triton':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm(x, w, y, z), quantiles=quantiles)
-        print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd.best_config})')
-    if provider == 'rocblas':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_matmul_ref(x, w, y), quantiles=quantiles)
+    phantom_addmm_baseline = _AddMmBaselineFunction.apply
+    phantom_addmm_optimized = _AddMmOptimizedFunction.apply
+    if provider == 'baseline':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_baseline(x, w, y, z), quantiles=quantiles)
+        print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_baseline.best_config})')
+    if provider == 'optimized':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_optimized(x, w, y, z), quantiles=quantiles)
+        print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_optimized.best_config})')
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
 
