@@ -715,13 +715,11 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 ; >>>>>>>> LOOP START
 ; >>>>>>>>>>>>>>>>>>>
 .LBB0_26:                               ; =>This Inner Loop Header: Depth=1
-	; sched_barrier mask(0x00000000)
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
+        ; advance pointers
 	v_lshl_add_u64 v[100:101], v[24:25], 0, s[0:1]
 	v_lshl_add_u64 v[102:103], v[22:23], 0, s[0:1]
 	v_lshl_add_u64 v[104:105], v[20:21], 0, s[0:1]
 	v_lshl_add_u64 v[106:107], v[18:19], 0, s[0:1]
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	v_lshl_add_u64 v[108:109], v[16:17], 0, s[0:1]
 	v_lshl_add_u64 v[110:111], v[14:15], 0, s[0:1]
 	v_lshl_add_u64 v[112:113], v[12:13], 0, s[0:1]
@@ -730,12 +728,11 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	v_lshl_add_u64 v[118:119], v[6:7], 0, s[0:1]
 	v_lshl_add_u64 v[120:121], v[4:5], 0, s[0:1]
 	v_lshl_add_u64 v[122:123], v[2:3], 0, s[0:1]
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
+	; preload from global memory for next iteration
 	global_load_dwordx4 v[46:49], v[100:101], off
 	global_load_dwordx4 v[50:53], v[102:103], off
 	global_load_dwordx4 v[54:57], v[104:105], off
 	global_load_dwordx4 v[60:63], v[106:107], off
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	global_load_dwordx4 v[64:67], v[108:109], off
 	global_load_dwordx4 v[68:71], v[110:111], off
 	global_load_dwordx4 v[72:75], v[112:113], off
@@ -744,70 +741,49 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	global_load_dwordx4 v[88:91], v[118:119], off
 	global_load_dwordx4 v[92:95], v[120:121], off
 	global_load_dwordx4 v[96:99], v[122:123], off
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
+	; wait for ds_write's from the previous iteration
 	s_waitcnt lgkmcnt(0)
 	s_barrier
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
+	; ds_read's + mfma's
 	ds_read_b128 v[100:103], v38 offset:8192
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[104:107], v30
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[108:111], v39 offset:8192
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[112:115], v31
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(2)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[100:103], v40 offset:8192
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(1)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[104:107], v32
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[108:111], v41 offset:8192
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[112:115], v33
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(2)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[100:103], v42 offset:8192
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(1)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[104:107], v34
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[108:111], v43 offset:8192
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[112:115], v35
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(2)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[100:103], v44 offset:8192
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	s_waitcnt lgkmcnt(1)
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[104:107], v36
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	ds_read_b128 v[108:111], v45 offset:8192
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	ds_read_b128 v[112:115], v37
+	; second barrier, TODO: document it better
 	s_waitcnt lgkmcnt(0)
 	s_barrier
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
+	; mfma's + ds_write's
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]
-	.loc	2 137 20                        ; test_int8_gemm.py:137:20
 	s_waitcnt vmcnt(11)
 	ds_write_b128 v58, v[46:49]
 	s_waitcnt vmcnt(10)
@@ -816,7 +792,6 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_write_b128 v78, v[54:57]
 	s_waitcnt vmcnt(8)
 	ds_write_b128 v76, v[60:63] offset:6144
-	.loc	2 138 20                        ; test_int8_gemm.py:138:20
 	s_waitcnt vmcnt(7)
 	ds_write_b128 v58, v[64:67] offset:8192
 	s_waitcnt vmcnt(6)
@@ -833,12 +808,10 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_write_b128 v28, v[92:95] offset:8192
 	s_waitcnt vmcnt(0)
 	ds_write_b128 v29, v[96:99] offset:14336
-	.loc	2 140 33                        ; test_int8_gemm.py:140:33
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]
-	; sched_barrier mask(0x00000000)
-	.loc	2 134 33                        ; test_int8_gemm.py:134:33
+	; loop control flow
 	s_add_u32 s0, s0, 0x200
 	s_addc_u32 s1, s1, 0
 	s_add_i32 s2, s2, -1
