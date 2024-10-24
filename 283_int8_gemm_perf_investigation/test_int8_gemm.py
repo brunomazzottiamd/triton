@@ -431,8 +431,8 @@ def benchmark(M, N, K, provider):
     else:
         assert 'triton' in provider
         ms, min_ms, max_ms = triton.testing.do_bench(
-            lambda: gemm_a8w8_forward(out[0], a[0], b[0], alpha_row[0], alpha_col[0]), rep=100, quantiles=quantiles)
-        print(f"M = {M}, N = {N}, K = {K}, type = {in_dtype}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
+            lambda: gemm_a8w8_forward(out[0], a[0], b[0], alpha_row[0], alpha_col[0], pick_best_config=True), rep=100, quantiles=quantiles)
+        # print(f"M = {M}, N = {N}, K = {K}, type = {in_dtype}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
     perf_us = lambda x: round(x * 1e3, 2)
     # perf_us = lambda x: round(2 * M * N * K / x * 1e-9, 2)
     return perf_us(ms), perf_us(min_ms), perf_us(max_ms)
@@ -464,8 +464,8 @@ def test_gemm_a8w8(m, n, k):
         out_torch = gemm_a8w8(a, b, alpha_row=alpha_row, alpha_col=alpha_col)
         # out_triton = torch.empty([m, n], dtype=torch.int8, device=a.device)
         out_triton = torch.empty([n, m], dtype=torch.int8, device=a.device).T
-        gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col)
-        print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
+        gemm_a8w8_forward(out_triton, a, b, alpha_row, alpha_col, pick_best_config=True)
+        # print(f"M = {m}, N = {n}, K = {k}, best_config = {_triton_gemm_a8w8_kernel_autotune.best_config}")
 
         diff = ~np.isclose(out_triton.half().cpu().numpy(), out_torch.half().cpu().numpy(), rtol=1e-2)
         assert diff.sum() < 10, f"m={m}, n={n}, k={k}"
@@ -509,7 +509,7 @@ def main() -> None:
     args = parse_args()
     match args.mode:
         case "run":
-            run_gemm_a8w8(args.M, args.N, args.K, pick_best_config=False)
+            run_gemm_a8w8(args.M, args.N, args.K, pick_best_config=True)
         case "best":
             run_gemm_a8w8(args.M, args.N, args.K, pick_best_config=True)
         case "bench":
