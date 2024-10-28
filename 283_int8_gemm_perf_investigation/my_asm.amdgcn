@@ -754,44 +754,47 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_read_b128 v[104:107], v30              ; dr2  cnt=2
 	ds_read_b128 v[108:111], v39 offset:8192  ; dr3  cnt=3
 	ds_read_b128 v[112:115], v31              ; dr4  cnt=4
-	s_waitcnt lgkmcnt(2)                      ;      cnt=2
+	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr1 and dr2 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma1 <- dr1, dr2
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma2 <- dr1, dr2
-	ds_read_b128 v[100:103], v40 offset:8192  ; dr5 cnt=3 reuse vgprs of dr1
-	s_waitcnt lgkmcnt(1)                      ;     cnt=1
+	ds_read_b128 v[100:103], v40 offset:8192  ; dr5  cnt=3 reuse vgprs of dr1
+	s_waitcnt lgkmcnt(1)                      ;      cnt=1, dr3 and dr4 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma3 <- dr3, dr4
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma4 <- dr3, dr4
 	ds_read_b128 v[104:107], v32              ; dr6  cnt=2 reuse vgprs of dr2
 	ds_read_b128 v[108:111], v41 offset:8192  ; dr7  cnt=3 reuse vgprs of dr3
 	ds_read_b128 v[112:115], v33              ; dr8  cnt=4 reuse vgprs of dr4
-	s_waitcnt lgkmcnt(2)                      ;      cnt=2
+	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr5 and dr6 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma5 <- dr5, dr6
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma6 <- dr5, dr6
 	ds_read_b128 v[100:103], v42 offset:8192  ; dr9  cnt=3 reuse vgprs of dr1, dr5
-	s_waitcnt lgkmcnt(1)                      ;      cnt=1
+	s_waitcnt lgkmcnt(1)                      ;      cnt=1, dr7 and dr8 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma7 <- dr7, dr8
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma8 <- dr7, dr8
 	ds_read_b128 v[104:107], v34              ; dr10 cnt=2 reuse vgprs of dr2, dr6
 	ds_read_b128 v[108:111], v43 offset:8192  ; dr11 cnt=3 reuse vgprs of dr3, dr7
 	ds_read_b128 v[112:115], v35              ; dr12 cnt=4 reuse vgprs of dr4, dr8
-	s_waitcnt lgkmcnt(2)                      ;      cnt=2
+	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr9 and dr10 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma9  <- dr9, dr10
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma10 <- dr9, dr10
 	ds_read_b128 v[100:103], v44 offset:8192  ; dr13 cnt=3 reuse vgprs of dr1, dr5, dr9
-	s_waitcnt lgkmcnt(1)                      ;      cnt=1
+	s_waitcnt lgkmcnt(1)                      ;      cnt=1, dr11 and dr12 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma11 <- dr11, dr12
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma12 <- dr11, dr12
 	ds_read_b128 v[104:107], v36              ; dr14 cnt=2 reuse vgprs of dr2, dr6, dr10
 	ds_read_b128 v[108:111], v45 offset:8192  ; dr15 cnt=3 reuse vgprs of dr3, dr7, dr11
 	ds_read_b128 v[112:115], v37              ; dr16 cnt=4 reuse vgprs of dr4, dr8, dr12
+	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr13 and dr14 are done
+	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma13 <- dr13, dr14
+	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma14 <- dr13, dr14
+	s_waitcnt lgkmcnt(0)                      ;      cnt=0, dr15 and dr16 are done
+	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma15 <- dr15, dr16
+	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma16 <- dr15, dr16
 	; second barrier
 	; wait for ds_read's from the current iteration
 	; shared memory addresses are reused, we can only write to them again
 	; after everything was read
-	s_waitcnt lgkmcnt(0)
 	s_barrier
-	; mfma that stands alone
-	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma13 <- dr13, dr14
 	; ds_write's
 	s_waitcnt vmcnt(11)
 	ds_write_b128 v58, v[46:49]               ; dw1
@@ -817,10 +820,6 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_write_b128 v28, v[92:95] offset:8192   ; dw11
 	s_waitcnt vmcnt(0)
 	ds_write_b128 v29, v[96:99] offset:14336  ; dw12
-	; remaining mfma's
-	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma14 <- dr13, dr14
-	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma15 <- dr15, dr16
-	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma16 <- dr15, dr16
 	; loop control flow
 	s_add_u32 s0, s0, 0x200
 	s_addc_u32 s1, s1, 0
