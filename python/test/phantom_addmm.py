@@ -452,10 +452,11 @@ def get_shapes():
         args={},
     ))
 def benchmark(M, N, K, provider):
-    x = torch.randn((M, K+128), device='cuda', dtype=torch.bfloat16)
+    x_optim = torch.randn((M, K+128), device='cuda', dtype=torch.bfloat16)
     w_optim = torch.randn((N, K+128), device='cuda', dtype=torch.bfloat16)
     w_optim = w_optim.T
     w = torch.randn(K, N, device='cuda', dtype=torch.bfloat16)
+    x = torch.randn((M, K), device='cuda', dtype=torch.bfloat16)
     y = torch.randn((M, N), device='cuda', dtype=torch.bfloat16)
     z = torch.empty_like(y)
     quantiles = [0.5, 0.2, 0.8]
@@ -466,7 +467,7 @@ def benchmark(M, N, K, provider):
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_baseline(x, w, y, z), quantiles=quantiles)
         print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_baseline.best_config})')
     if provider == 'optimized':
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_optimized(x, w_optim, y, z), quantiles=quantiles)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: phantom_addmm_optimized(x_optim, w_optim, y, z), quantiles=quantiles)
         print(f'SIZE: {M},{N},{K}   Best tuning config: ({_addmm_fwd_optimized.best_config})')
     perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
     return perf(ms), perf(max_ms), perf(min_ms)
