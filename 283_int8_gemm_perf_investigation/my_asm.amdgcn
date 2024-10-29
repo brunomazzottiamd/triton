@@ -754,6 +754,10 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_read_b128 v[104:107], v30              ; dr2  cnt=2
 	ds_read_b128 v[108:111], v39 offset:8192  ; dr3  cnt=3
 	ds_read_b128 v[112:115], v31              ; dr4  cnt=4
+	; advance pointers
+	s_add_u32 s0, s0, 0x200
+	s_addc_u32 s1, s1, 0
+	; ds_read's + mfma's
 	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr1 and dr2 are done
 	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma1 <- dr1, dr2
 	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma2 <- dr1, dr2
@@ -784,16 +788,11 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma12 <- dr11, dr12
 	ds_read_b128 v[108:111], v45 offset:8192  ; dr15 cnt=3 reuse vgprs of dr3, dr7, dr11
 	ds_read_b128 v[112:115], v37              ; dr16 cnt=4 reuse vgprs of dr4, dr8, dr12
-	s_waitcnt lgkmcnt(2)                      ;      cnt=2, dr13 and dr14 are done
-	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma13 <- dr13, dr14
-	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma14 <- dr13, dr14
-	s_waitcnt lgkmcnt(0)                      ;      cnt=0, dr15 and dr16 are done
-	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma15 <- dr15, dr16
-	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma16 <- dr15, dr16
 	; second barrier
 	; wait for ds_read's from the current iteration
 	; shared memory addresses are reused, we can only write to them again
 	; after everything was read
+	s_waitcnt lgkmcnt(0)                      ;      cnt=0, dr13, dr14, dr15 and dr16 are done
 	s_barrier
 	; ds_write's
 	s_waitcnt vmcnt(11)
@@ -802,27 +801,28 @@ _triton_gemm_a8w8_kernel_no_autotune:   ; @_triton_gemm_a8w8_kernel_no_autotune
 	ds_write_b128 v77, v[50:53] offset:2048   ; dw2
 	s_waitcnt vmcnt(9)
 	ds_write_b128 v78, v[54:57]               ; dw3
+	v_mfma_i32_16x16x32_i8 a[0:3], v[100:101], v[104:105], a[0:3]  ; mfma13 <- dr13, dr14
 	s_waitcnt vmcnt(8)
 	ds_write_b128 v76, v[60:63] offset:6144   ; dw4
 	s_waitcnt vmcnt(7)
 	ds_write_b128 v58, v[64:67] offset:8192   ; dw5
 	s_waitcnt vmcnt(6)
 	ds_write_b128 v77, v[68:71] offset:10240  ; dw6
+	v_mfma_i32_16x16x32_i8 a[0:3], v[102:103], v[106:107], a[0:3]  ; mfma14 <- dr13, dr14
 	s_waitcnt vmcnt(5)
 	ds_write_b128 v78, v[72:75] offset:8192   ; dw7
 	s_waitcnt vmcnt(4)
 	ds_write_b128 v76, v[80:83] offset:14336  ; dw8
 	s_waitcnt vmcnt(3)
 	ds_write_b128 v58, v[84:87] offset:16384  ; dw9
+	v_mfma_i32_16x16x32_i8 a[0:3], v[108:109], v[112:113], a[0:3]  ; mfma15 <- dr15, dr16
 	s_waitcnt vmcnt(2)
 	ds_write_b128 v27, v[88:91] offset:10240  ; dw10
 	s_waitcnt vmcnt(1)
 	ds_write_b128 v28, v[92:95] offset:8192   ; dw11
 	s_waitcnt vmcnt(0)
 	ds_write_b128 v29, v[96:99] offset:14336  ; dw12
-	; advance pointers
-	s_add_u32 s0, s0, 0x200
-	s_addc_u32 s1, s1, 0
+	v_mfma_i32_16x16x32_i8 a[0:3], v[110:111], v[114:115], a[0:3]  ; mfma16 <- dr15, dr16
 	; loop control flow
 	s_add_i32 s2, s2, -1
 	s_cmp_lg_u32 s2, 0
