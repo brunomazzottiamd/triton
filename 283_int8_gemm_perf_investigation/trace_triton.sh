@@ -29,6 +29,7 @@ copy_kernel_file() {
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 kernel_source="${script_dir}/test_int8_gemm.py"
+export AMD_INSERT_AMDGCN="${script_dir}/my_asm.amdgcn"
 
 M=20
 N=1920
@@ -118,6 +119,11 @@ EOF
 echo 'rocprofv2 input file content is:'
 cat "${input_file}"
 
+### Cleanup Triton cache again
+
+echo "Cleaning Triton cache at [${triton_cache_dir}]..."
+
+remove "${triton_cache_dir}"
 
 ### Generate kernel execution trace
 
@@ -154,3 +160,4 @@ remove "${input_file}" "${output_dir}"
 ### Done
 
 echo 'Done.'
+unset AMD_INSERT_AMDGCN
