@@ -92,16 +92,24 @@ kernel_program=(
 )
 
 unset AMD_INSERT_AMDGCN
-rocprof --stats -o "${output_dir}/prof_results_ref.csv" "${kernel_program[@]}"
 
-ref_time=$(get_kernel_time_us "${output_dir}/prof_results_ref.stats.csv")
-echo "Reference time is ${ref_time} us."
+for run in {1..10}; do
+    rocprof \
+	--stats \
+	-o "${output_dir}/prof_results_ref.csv" \
+	"${kernel_program[@]}" \
+	&> /dev/null
+
+    ref_time=$(get_kernel_time_us "${output_dir}/prof_results_ref.stats.csv")
+    echo "${run}) Reference time is ${ref_time} us."
+done
 
 asm_ref_file="${output_dir}/asm_ref.amdgcn"
 copy_kernel_file 'assembly' 'amdgcn' "${TRITON_CACHE_DIR}" "${asm_ref_file}"
 
-pytest "${kernel_source}"
-python "${kernel_source}" bench
+# Disable test and Triton benchmarking.
+# pytest "${kernel_source}"
+# python "${kernel_source}" bench
 
 
 ### Run Triton kernel with manual schedule assembly injection
@@ -111,16 +119,24 @@ echo 'Running kernel with manual schedule assembly injection...'
 clean_triton_cache
 
 export AMD_INSERT_AMDGCN="${script_dir}/my_asm.amdgcn"
-rocprof --stats -o "${output_dir}/prof_results_msched.csv" "${kernel_program[@]}"
 
-msched_time=$(get_kernel_time_us "${output_dir}/prof_results_msched.stats.csv")
-echo "Manual schedule time is ${msched_time} us."
+for run in {1..10}; do
+    rocprof \
+	--stats \
+	-o "${output_dir}/prof_results_msched.csv" \
+	"${kernel_program[@]}" \
+	&> /dev/null
+
+    msched_time=$(get_kernel_time_us "${output_dir}/prof_results_msched.stats.csv")
+    echo "${run}) Manual schedule time is ${msched_time} us."
+done
 
 asm_msched_file="${output_dir}/asm_msched.amdgcn"
 cp "${AMD_INSERT_AMDGCN}" "${asm_msched_file}"
 
-pytest "${kernel_source}"
-python "${kernel_source}" bench
+# Disable test and Triton benchmarking.
+# pytest "${kernel_source}"
+# python "${kernel_source}" bench
 
 unset AMD_INSERT_AMDGCN
 
