@@ -114,6 +114,11 @@ SE_MASK=0xFFF
 SIMD_SELECT=0xF
 ISA_CAPTURE_MODE=2
 DISPATCH=${dispatch_id}
+PERFCOUNTERS_CTRL=0x2
+PERFCOUNTER=SQ_LDS_DATA_FIFO_FULL
+PERFCOUNTER=SQ_LDS_CMD_FIFO_FULL
+PERFCOUNTER=SQ_LDS_UNALIGNED_STALL
+PERFCOUNTER=SQ_LDS_BANK_CONFLICT
 EOF
 
 echo 'rocprofv2 input file content is:'
@@ -129,7 +134,10 @@ remove "${triton_cache_dir}"
 
 echo 'Generating kernel execution trace...'
 
+metrics_file="${script_dir}/perf_counters.xml"
+
 rocprofv2 \
+    -m "${metrics_file}" \
     --input "${input_file}" \
     --plugin att auto \
     --mode file \
