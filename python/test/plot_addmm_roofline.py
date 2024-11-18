@@ -15,9 +15,12 @@ def get_target_shapes() -> pd.DataFrame:
     # Basic data: textual description, M, N, K
     df: pd.DataFrame = pd.DataFrame(
         [
-            ("#1", 20196, 512, 1536),
-            ("#2", 171792, 512, 1536),
-            ("#3", 173318, 512, 1536),
+            # Shapes of `addmm` kernel:
+            # ("#1", 20196, 512, 1536),
+            # ("#2", 171792, 512, 1536),
+            # ("#3", 173318, 512, 1536),
+            # Shapes of `tem_fused_addmm_130` kernel:
+            ("", 84122, 2048, 256)
         ],
         columns=["desc", "M", "N", "K"],
     )
@@ -26,7 +29,10 @@ def get_target_shapes() -> pd.DataFrame:
     N: pd.Series = df["N"]
     K: pd.Series = df["K"]
     ops: pd.Series = 2 * M * N * K
-    bytes: pd.Series = 2 * M * K + 2 * K * N + 4 * M * N
+    # Y with (M, N) shape:
+    # bytes: pd.Series = 2 * M * K + 2 * K * N + 4 * M * N
+    # Y with (1, N) shape + broadcasting:
+    bytes: pd.Series = 2 * M * K + 2 * K * N + 2 * N + 2 * M * N
     df["arith_intensity"] = ops / bytes
     return df
 
@@ -37,8 +43,9 @@ def get_target_hardware_specs() -> pd.DataFrame:
         [
             ("Peak MI300X", 1307.4, 5.3),
             ("Achievable MI300X", 650, 3.5),
-            ("Peak H100 PCIe", 1513, 2),
-            ("Peak H100 SXM", 1979, 3.35),
+            # Dividing Nvidia performance numbers by 2 because the reported numbers use 2:4 sparsity.
+            ("Peak H100 PCIe", 1513 / 2, 2),
+            ("Peak H100 SXM", 1979 / 2, 3.35),
         ],
         columns=["desc", "comp_perf_tops", "mem_bandwidth_tbs"],
     )
@@ -96,8 +103,11 @@ def main() -> None:
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
 
     # Set chart title and axes' titles:
+    kernel_name: str
+    # kernel_name = "addmm"
+    kernel_name = "tem_fused_addmm_130"
     ax.set(
-        title="Phantom addmm Kernel Roofline",
+        title=f"Phantom {kernel_name} Kernel Roofline",
         xlabel="Arithmetic Intensity (Op / B)",
         ylabel="Performance (TOp / s)",
     )
