@@ -15,9 +15,9 @@ def get_target_shapes() -> pd.DataFrame:
     # Basic data: textual description, M, N, K
     df: pd.DataFrame = pd.DataFrame(
         [
-            ("Shape #1", 20196, 512, 1536),
-            ("Shape #2", 171792, 512, 1536),
-            ("Shape #3", 173318, 512, 1536),
+            ("#1", 20196, 512, 1536),
+            ("#2", 171792, 512, 1536),
+            ("#3", 173318, 512, 1536),
         ],
         columns=["desc", "M", "N", "K"],
     )
@@ -57,19 +57,20 @@ class ColorPalette:
         # Categorical color palette from this website:
         # https://carbondesignsystem.com/data-visualization/color-palettes/#categorical-palettes
         self.colors = [
-            "#8a3ffc",  # Purple 60
-            "#33b1ff",  # Cyan 40
-            "#007d79",  # Teal 60
-            "#ff7eb6",  # Magenta 40
+            "#6929c4",  # Purple 70
+            "#1192e8",  # Cyan 50
+            "#005d5d",  # Teal 70
+            "#9f1853",  # Magenta 70
             "#fa4d56",  # Red 50
-            "#6fdc8c",  # Green 30
-            "#4589ff",  # Blue 50
-            "#d12771",  # Magenta 60
-            "#d2a106",  # Yellow 40
-            "#08bdba",  # Teal 40
-            "#bae6ff",  # Cyan 20
-            "#ba4e00",  # Orange 60
-            "#d4bbff",  # Purple 30
+            "#570408",  # Red 90
+            "#198038",  # Green 60
+            "#002d9c",  # Blue 80
+            "#ee538b",  # Magenta 50
+            "#b28600",  # Yellow 50
+            "#009d9a",  # Teal 50
+            "#012749",  # Cyan 90
+            "#8a3800",  # Orange 70
+            "#a56eff",  # Purple 50
         ]
         self.color_index = 0
 
@@ -95,7 +96,6 @@ def main() -> None:
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
 
     # Set chart title and axes' titles:
-    # TODO: Improve formatting of titles.
     ax.set(
         title="Phantom addmm Kernel Roofline",
         xlabel="Arithmetic Intensity (Op / B)",
@@ -133,13 +133,12 @@ def main() -> None:
     max_y: float = ax.get_ylim()[1]
     shapes: list = []
     for _, shape in shapes_df.iterrows():
-        # TODO:
-        # * Improve shape legend text, i.e. display (M, N, K).
+        label: str = f"{shape['desc']} ({shape['M']}, {shape['N']}, {shape['K']})"
         shape = ax.vlines(
             x=shape["arith_intensity"],
             ymin=0,
             ymax=max_y,
-            label=shape["desc"],
+            label=label,
             color=color_palette.next_color(),
             linestyles="dashed",
         )
