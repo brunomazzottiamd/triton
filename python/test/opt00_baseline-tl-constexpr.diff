@@ -1,0 +1,36 @@
+diff --git a/python/test/triton_tem_fused_addmm_130.py b/python/test/triton_tem_fused_addmm_130.py
+index aefaab862..723255b9c 100755
+--- a/python/test/triton_tem_fused_addmm_130.py
++++ b/python/test/triton_tem_fused_addmm_130.py
+@@ -177,7 +177,7 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
+
+
+ @triton.jit
+-def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
++def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M: tl.constexpr):
+     GROUP_M: tl.constexpr = 8
+     EVEN_K: tl.constexpr = True
+     ACC_TYPE: tl.constexpr = tl.float32
+@@ -185,16 +185,16 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
+     BLOCK_N: tl.constexpr = 128
+     BLOCK_K: tl.constexpr = 32
+
+-    N = 2048
+-    K = 256
++    N: tl.constexpr = 2048
++    K: tl.constexpr = 256
+     if M * N == 0:
+         # early exit due to zero-size input(s)
+         return
+
+-    stride_am = 256
+-    stride_ak = 1
+-    stride_bk = 2048
+-    stride_bn = 1
++    stride_am: tl.constexpr = 256
++    stride_ak: tl.constexpr = 1
++    stride_bk: tl.constexpr = 2048
++    stride_bn: tl.constexpr = 1
+
+     # based on triton.ops.matmul
+     pid = tl.program_id(0)
