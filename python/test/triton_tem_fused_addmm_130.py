@@ -177,29 +177,20 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
 
 
 @triton.jit
-def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0, ks0, ks1, ks2):
+def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
     GROUP_M: tl.constexpr = 8
     EVEN_K: tl.constexpr = True
-    ALLOW_TF32: tl.constexpr = False
     ACC_TYPE: tl.constexpr = tl.float32
-    B_PROLOGUE_CAST_TYPE: tl.constexpr = None
     BLOCK_M: tl.constexpr = 128
     BLOCK_N: tl.constexpr = 128
     BLOCK_K: tl.constexpr = 32
-    # Original line:
-    # matrix_instr_nonkdim: tl.constexpr = 16
-    # Removed to comply with `ruff`'s F841 warning.
-    A = arg_A
-    B = arg_B
 
-    # Original line:
-    # M = ks0 + ks2 + (10*ks1)
-    M = ks0  # Using ks0 as placeholder for M
     N = 2048
     K = 256
     if M * N == 0:
         # early exit due to zero-size input(s)
         return
+
     stride_am = 256
     stride_ak = 1
     stride_bk = 2048
@@ -239,9 +230,7 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0, ks0, 
         else:
             a = tl.load(A, mask=rk[None, :] < k, other=0.)
             b = tl.load(B, mask=rk[:, None] < k, other=0.)
-        if B_PROLOGUE_CAST_TYPE is not None:
-            b = b.to(B_PROLOGUE_CAST_TYPE)
-        acc += tl.dot(a, b, allow_tf32=ALLOW_TF32)
+        acc += tl.dot(a, b)
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
 
@@ -280,8 +269,7 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
     block_m: int = 128
     block_n: int = 128
     grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
-    # Using ks0 as placeholder for M. ks1 and ks2 are unused.
-    triton_tem_fused_addmm_130_kernel_opt[grid](input, a, b, output, m, 0, 0)
+    triton_tem_fused_addmm_130_kernel_opt[grid](input, a, b, output, m)
 
 
 # END OPTIMIZED KERNEL <<<<<<<<<<<<<<<<<<<<<<
