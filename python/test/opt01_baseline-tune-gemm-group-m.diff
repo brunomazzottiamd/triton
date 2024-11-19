@@ -1,0 +1,58 @@
+diff --git a/python/test/triton_tem_fused_addmm_130.py b/python/test/triton_tem_fused_addmm_130.py
+index aefaab862..7e9a10fe6 100755
+--- a/python/test/triton_tem_fused_addmm_130.py
++++ b/python/test/triton_tem_fused_addmm_130.py
+@@ -177,7 +177,7 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
+
+
+ @triton.jit
+-def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
++def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M, GRID_MN: tl.constexpr, NUM_XCDS: tl.constexpr):
+     GROUP_M: tl.constexpr = 8
+     EVEN_K: tl.constexpr = True
+     ACC_TYPE: tl.constexpr = tl.float32
+@@ -196,17 +196,24 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
+     stride_bk = 2048
+     stride_bn = 1
+
+-    # based on triton.ops.matmul
+-    pid = tl.program_id(0)
+-    grid_m = (M + BLOCK_M - 1) // BLOCK_M
+-    grid_n = (N + BLOCK_N - 1) // BLOCK_N
+-
+-    # re-order program ID for better L2 performance
+-    width = GROUP_M * grid_n
+-    group_id = pid // width
+-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+-    pid_m = group_id * GROUP_M + (pid % group_size)
+-    pid_n = (pid % width) // (group_size)
++    # pid mapping from tune_gemm.py:
++    pid = tl.program_id(axis=0)
++    num_pid_m = tl.cdiv(M, BLOCK_M)
++    num_pid_n = tl.cdiv(N, BLOCK_N)
++    ## pid remapping on xcds
++    # Number of pids per XCD in the new arrangement
++    pids_per_xcd = GRID_MN // NUM_XCDS
++    # Compute current XCD and local pid within the XCD
++    xcd = pid % NUM_XCDS
++    local_pid = pid // NUM_XCDS
++    # Calculate new pid based on the new grouping
++    pid = xcd * pids_per_xcd + local_pid
++    num_pid_in_group = GROUP_M * num_pid_n
++    group_id = pid // num_pid_in_group
++    first_pid_m = group_id * GROUP_M
++    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
++    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
++    pid_n = (pid % num_pid_in_group) // group_size_m
+
+     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+@@ -269,7 +276,7 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output:
+     block_m: int = 128
+     block_n: int = 128
+     grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
+-    triton_tem_fused_addmm_130_kernel_opt[grid](input, a, b, output, m)
++    triton_tem_fused_addmm_130_kernel_opt[grid](input, a, b, output, m, GRID_MN=grid[0], NUM_XCDS=8)
+
+
+ # END OPTIMIZED KERNEL <<<<<<<<<<<<<<<<<<<<<<
