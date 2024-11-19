@@ -176,25 +176,58 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
 # BEGIN OPTIMIZED KERNEL >>>>>>>>>>>>>>>>>>>>
 
 
-@triton.jit
-def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
-    GROUP_M: tl.constexpr = 8
-    EVEN_K: tl.constexpr = True
-    ACC_TYPE: tl.constexpr = tl.float32
-    BLOCK_M: tl.constexpr = 128
-    BLOCK_N: tl.constexpr = 128
-    BLOCK_K: tl.constexpr = 32
+def get_triton_autotune_configs() -> list[triton.Config]:
+    block_m_range = [32, 64, 128, 256]
+    block_n_range = [32, 64, 128, 256]
+    block_k_range = [32, 64, 128, 256]
+    group_m_range = [4, 8]
+    matrix_instr_nonkdim_range = [16, 32]
+    waves_per_eu_range = [0]
+    kpack_range = [1, 2]
+    num_warps_range = [4, 8]
+    num_stages_range = [2]
+    return [
+        triton.Config(
+            {
+                "BLOCK_M": block_m,
+                "BLOCK_N": block_n,
+                "BLOCK_K": block_k,
+                "GROUP_M": group_m,
+                "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                "waves_per_eu": waves_per_eu,
+                "kpack": kpack,
+            },
+            num_stages=num_stages,
+            num_warps=num_warps,
+        )
+        for block_m in block_m_range
+        for block_n in block_n_range
+        for block_k in block_k_range
+        for group_m in group_m_range
+        for matrix_instr_nonkdim in matrix_instr_nonkdim_range
+        for waves_per_eu in waves_per_eu_range
+        for kpack in kpack_range
+        for num_stages in num_stages_range
+        for num_warps in num_warps_range
+    ]
 
-    N = 2048
-    K = 256
+
+@triton.autotune(configs=get_triton_autotune_configs(), key=["M", "N", "K"])
+@triton.heuristics({"EVEN_K": lambda args: args["K"] % args["BLOCK_K"] == 0})
+@triton.jit
+def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
+                                          M: int, N: int, K: int,  #
+                                          stride_am: int, stride_ak: int,  #
+                                          stride_bk: int, stride_bn: int,  #
+                                          stride_cm: int, stride_cn: int,  #
+                                          stride_xxx: int,  #
+                                          BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
+                                          GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
+    ACC_TYPE: tl.constexpr = tl.float32
+
     if M * N == 0:
         # early exit due to zero-size input(s)
         return
-
-    stride_am = 256
-    stride_ak = 1
-    stride_bk = 2048
-    stride_bn = 1
 
     # based on triton.ops.matmul
     pid = tl.program_id(0)
@@ -242,7 +275,7 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0, M):
     mask = (idx_m < M) & (idx_n < N)
 
     # inductor generates a suffix
-    xindex = idx_n + (2048 * idx_m)
+    xindex = stride_cn * idx_n + stride_cm * idx_m
     tmp0 = tl.load(in_ptr0 + (tl.broadcast_to(idx_n, acc.shape)), mask, eviction_policy='evict_last').to(tl.float32)
     tmp1 = acc + tmp0
     tl.store(out_ptr0 + (tl.broadcast_to(xindex, acc.shape)), tmp1, mask)
@@ -253,23 +286,23 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
     k_a: int
     m, k_a = a.shape
     assert m > 0
-    assert k_a == 256
-    assert a.stride() == (k_a, 1)
+    assert k_a > 0
     k_b: int
     n: int
     k_b, n = b.shape
     assert k_b == k_a
-    assert n == 2048
-    assert b.stride() == (n, 1)
+    assert n > 0
     assert input.shape == (1, n)
-    assert input.stride() == (n, 1)
     assert output.shape == (m, n)
-    assert output.stride() == (n, 1)
-    # Grid is constant in baseline kernel:
-    block_m: int = 128
-    block_n: int = 128
-    grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
-    triton_tem_fused_addmm_130_kernel_opt[grid](input, a, b, output, m)
+    grid = lambda args: (triton.cdiv(args["M"], args["BLOCK_M"]) * triton.cdiv(args["N", "BLOCK_N"]), )
+    triton_tem_fused_addmm_130_kernel_opt[grid](
+        input, a, b, output,  #
+        m, n, k_a,  #
+        a.stride(0), a.stride(1),  #
+        b.stride(0), b.stride(1),  #
+        output.stride(0), output.stride(1),  #
+        input.stride(0)  #
+    )
 
 
 # END OPTIMIZED KERNEL <<<<<<<<<<<<<<<<<<<<<<
@@ -302,6 +335,7 @@ def benchmark(m: int, n: int, k: int, provider: str):
     if provider == "optimized":
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(input, a, b, output),
                                                      quantiles=quantiles)
+        print(f"Best tuning config: {triton_tem_fused_addmm_130_kernel_opt.best_config}")
     perf = lambda ms: tflops(m, n, k, ms)
     return perf(ms), perf(max_ms), perf(min_ms)
 
