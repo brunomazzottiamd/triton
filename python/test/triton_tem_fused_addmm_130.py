@@ -275,6 +275,10 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
 # END OPTIMIZED KERNEL <<<<<<<<<<<<<<<<<<<<<<
 
 
+def tflops(m: int, n: int, k: int, ms: float) -> float:
+    return 2 * m * n * k * 1e-12 / (ms * 1e-3)
+
+
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=["m", "n", "k"],
@@ -282,8 +286,6 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
         line_arg="provider",
         line_vals=["baseline", "optimized"],
         line_names=["Baseline", "Optimized"],
-        styles=[("green", "-"), ("blue", "-")],
-        ylabel="TFLOPS",
         plot_name="triton_tem_fused_addmm_130_performance",
         args={},
     ))
@@ -300,8 +302,8 @@ def benchmark(m: int, n: int, k: int, provider: str):
     if provider == "optimized":
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(input, a, b, output),
                                                      quantiles=quantiles)
-    tflops = lambda ms: 2 * m * n * k * 1e-12 / (ms * 1e-3)
-    return tflops(ms), tflops(max_ms), tflops(min_ms)
+    perf = lambda ms: tflops(m, n, k, ms)
+    return perf(ms), perf(max_ms), perf(min_ms)
 
 
 @pytest.mark.parametrize("m, n, k", get_target_shapes())
@@ -316,8 +318,10 @@ def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int):
     triton_tem_fused_addmm_130(input, a, b, out_triton)
     triton_tem_fused_addmm_130_opt(input, a, b, out_triton_opt)
     # Using highest `rtol` and `atol` from `tune_gemm.py` to compare against Torch.
-    assert torch.allclose(out_torch, out_triton, rtol=1e-2, atol=4e-2)
-    assert torch.allclose(out_torch, out_triton_opt, rtol=1e-2, atol=4e-2)
+    torch_rtol: float = 1e-2
+    torch_atol: float = 4e-2
+    assert torch.allclose(out_torch, out_triton, rtol=torch_rtol, atol=torch_atol)
+    assert torch.allclose(out_torch, out_triton_opt, rtol=torch_rtol, atol=torch_atol)
     assert torch.allclose(out_triton, out_triton_opt)
 
 
