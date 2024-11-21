@@ -7,3 +7,6 @@
 * `opt02_nonkdim16-tune-gemm-group-m.diff`:
   * Use L2 grouping from `tune_gemm.py`.
   * Base commit: `2a24b9cfc`
+* `opt03_nonkdim16-tl-constexpr.diff`:
+  * Use `tl.constexpr` as much as possible.
+  * Base commit: `2a24b9cfc`

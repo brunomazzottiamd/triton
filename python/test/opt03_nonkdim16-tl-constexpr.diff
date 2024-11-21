@@ -1,0 +1,21 @@
+diff --git a/python/test/triton_tem_fused_addmm_130.py b/python/test/triton_tem_fused_addmm_130.py
+index fa73de8a5..5c064ac2c 100755
+--- a/python/test/triton_tem_fused_addmm_130.py
++++ b/python/test/triton_tem_fused_addmm_130.py
+@@ -222,11 +222,11 @@ def get_triton_autotune_configs() -> list[triton.Config]:
+ @triton.heuristics({"EVEN_K": lambda args: args["K"] % args["BLOCK_K"] == 0})
+ @triton.jit
+ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
+-                                          M: int, N: int, K: int,  #
+-                                          stride_am: int, stride_ak: int,  #
+-                                          stride_bk: int, stride_bn: int,  #
+-                                          stride_cm: int, stride_cn: int,  #
+-                                          stride_xxx: int,  #
++                                          M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,  #
++                                          stride_am: tl.constexpr, stride_ak: tl.constexpr,  #
++                                          stride_bk: tl.constexpr, stride_bn: tl.constexpr,  #
++                                          stride_cm: tl.constexpr, stride_cn: tl.constexpr,  #
++                                          stride_xxx: tl.constexpr,  #
+                                           BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
+                                           GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
+     ACC_TYPE: tl.constexpr = tl.float32
