@@ -5,7 +5,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 N=30
 
 for (( i=1; i<=N; i++ )); do
-    "${script_dir}/triton_tem_fused_addmm_130.py"
+    "${script_dir}/triton_tem_fused_addmm_130.py" bench
 done | \
 awk '
 BEGIN {
