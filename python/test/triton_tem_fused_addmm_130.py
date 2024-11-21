@@ -171,7 +171,10 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
     block_n: int = 128
     grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
     # Using ks0 as placeholder for M. ks1 and ks2 are unused.
-    triton_tem_fused_addmm_130_kernel[grid](input, a, b, output, m, 0, 0)
+    triton_tem_fused_addmm_130_kernel[grid](
+        input, a, b, output, m, 0, 0,  #
+        num_warps=8, num_stages=2, matrix_instr_nonkdim=16,  #
+    )
 
 
 # END BASELINE KERNEL <<<<<<<<<<<<<<<<<<<<<<<
@@ -186,7 +189,7 @@ def get_triton_autotune_configs() -> list[triton.Config]:
     group_m_range: list[int] = [8]
     matrix_instr_nonkdim_range: list[int] = [16]
     waves_per_eu_range: list[int] = [0]
-    kpack_range: list[int] = [2]
+    kpack_range: list[int] = [1]
     num_warps_range: list[int] = [8]
     num_stages_range: list[int] = [2]
     return [
