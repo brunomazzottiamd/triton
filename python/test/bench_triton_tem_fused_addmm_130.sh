@@ -18,6 +18,7 @@ BEGIN {
     print "      Baseline  Optimized";
 }
 
+# Performance line:
 /^[0-9]+[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+[0-9]+\.[0-9]+$/ {
     baseline = $5;
     optimized = $6;
@@ -27,6 +28,15 @@ BEGIN {
     optimized_sum_sq += optimized * optimized;
     count++;
     printf "%03d %.6f %.6f\n", count, baseline, optimized;
+}
+
+# Best config line:
+/^Best optimized tuning config: .+$/ {
+    config = $0;
+    sub(/Best optimized tuning config: /, "", config);
+    sub(/, num_ctas: 1/, "", config);
+    sub(/, maxnreg: None/, "", config);
+    configs[config]++;
 }
 
 END {
@@ -40,6 +50,10 @@ END {
 	if (baseline_mean != 0) {
 	   mean_speedup = optimized_mean / baseline_mean
 	   printf "\nMean Speedup (Optimized / Baseline): %.6f\n", mean_speedup;
+	}
+	print "\nConfigs Frequency:"
+	for (config in configs) {
+	    printf "%6.2f%%: %s\n", 100 * configs[config] / count, config
 	}
     } else {
         print "No data to process.";
