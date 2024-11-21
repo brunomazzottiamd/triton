@@ -13,6 +13,8 @@
 #     N = 2048
 #     K = 256
 
+import sys
+
 import torch
 from torch import Tensor
 
@@ -28,6 +30,9 @@ import triton.language as tl
 # from torch._inductor.runtime import triton_helpers, triton_heuristics
 # from torch._inductor.runtime.triton_helpers import libdevice, math as tl_math
 # from torch._inductor.runtime.hints import AutotuneHint, ReductionHint, TileHint, DeviceProperties
+
+# BEGIN UTILITIES >>>>>>>>>>>>>>>>>>>>>>>>>>
+# Use by benchmark and correctness test.
 
 
 def get_target_shapes() -> list[tuple[int, int, int]]:
@@ -47,9 +52,7 @@ def gen_tensors(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]
     return input, a, b, output
 
 
-def torch_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor) -> Tensor:
-    return a @ b + input
-
+# END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 # BEGIN BASELINE KERNEL >>>>>>>>>>>>>>>>>>>>>
 
@@ -177,15 +180,15 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
 
 
 def get_triton_autotune_configs() -> list[triton.Config]:
-    block_m_range = [32, 64, 128, 256]
-    block_n_range = [32, 64, 128, 256]
-    block_k_range = [32, 64, 128, 256]
-    group_m_range = [4, 8]
-    matrix_instr_nonkdim_range = [16, 32]
-    waves_per_eu_range = [0]
-    kpack_range = [1, 2]
-    num_warps_range = [4, 8]
-    num_stages_range = [2]
+    block_m_range: list[int] = [128]
+    block_n_range: list[int] = [128]
+    block_k_range: list[int] = [32]
+    group_m_range: list[int] = [8]
+    matrix_instr_nonkdim_range: list[int] = [16]
+    waves_per_eu_range: list[int] = [0]
+    kpack_range: list[int] = [2]
+    num_warps_range: list[int] = [8]
+    num_stages_range: list[int] = [2]
     return [
         triton.Config(
             {
@@ -243,14 +246,22 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
 
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    if (stride_am == 1 and stride_ak == M) or (stride_am == K and stride_ak == 1):
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    else:
-        ram = rm % M
-    if (stride_bk == 1 and stride_bn == K) or (stride_bk == N and stride_bn == 1):
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    else:
-        rbn = rn % N
+    # Was getting
+    # > error: operand #0 does not dominate this use
+    # in
+    # > tl.multiple_of(rm % M, BLOCK_M)
+    # > tl.multiple_of(rn % N, BLOCK_N)
+    # when M and N are passed as kernel arguments.
+    # if (stride_am == 1 and stride_ak == M) or (stride_am == K and stride_ak == 1):
+    #     ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    # else:
+    #     ram = rm % M
+    ram = rm % M
+    # if (stride_bk == 1 and stride_bn == K) or (stride_bk == N and stride_bn == 1):
+    #     rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    # else:
+    #     rbn = rn % N
+    rbn = rn % N
     rk = tl.arange(0, BLOCK_K)
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
@@ -294,7 +305,7 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
     assert n > 0
     assert input.shape == (1, n)
     assert output.shape == (m, n)
-    grid = lambda args: (triton.cdiv(args["M"], args["BLOCK_M"]) * triton.cdiv(args["N", "BLOCK_N"]), )
+    grid = lambda args: (triton.cdiv(m, args["BLOCK_M"]) * triton.cdiv(n, args["BLOCK_N"]), )
     triton_tem_fused_addmm_130_kernel_opt[grid](
         input, a, b, output,  #
         m, n, k_a,  #
@@ -306,6 +317,8 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
 
 
 # END OPTIMIZED KERNEL <<<<<<<<<<<<<<<<<<<<<<
+
+# BEGIN BENCHMARK >>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 
 def tflops(m: int, n: int, k: int, ms: float) -> float:
@@ -322,7 +335,7 @@ def tflops(m: int, n: int, k: int, ms: float) -> float:
         plot_name="triton_tem_fused_addmm_130_performance",
         args={},
     ))
-def benchmark(m: int, n: int, k: int, provider: str):
+def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider: str):
     input: Tensor
     a: Tensor
     b: Tensor
@@ -335,13 +348,29 @@ def benchmark(m: int, n: int, k: int, provider: str):
     if provider == "optimized":
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(input, a, b, output),
                                                      quantiles=quantiles)
-        print(f"Best tuning config: {triton_tem_fused_addmm_130_kernel_opt.best_config}")
+        print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt.best_config}")
     perf = lambda ms: tflops(m, n, k, ms)
     return perf(ms), perf(max_ms), perf(min_ms)
 
 
+# END BENCHMARK <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+# BEGIN CORRECTNESS TEST >>>>>>>>>>>>>>>>>>>>
+
+
+def torch_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor) -> Tensor:
+    return a @ b + input
+
+
+# The vast majority of tensor elements are basically identical. However, there are some elements
+# that differ by 0.25. This function checks if 99.99% of elements differ at most by 0.000001.
+def tensors_match(a: Tensor, b: Tensor) -> bool:
+    assert a.shape == b.shape, "Tensor shapes must be equal."
+    return (torch.sum(torch.abs(a - b) < 1e-06).item() / a.nelement()) > 0.9999
+
+
 @pytest.mark.parametrize("m, n, k", get_target_shapes())
-def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int):
+def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int) -> None:
     input: Tensor
     a: Tensor
     b: Tensor
@@ -354,10 +383,62 @@ def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int):
     # Using highest `rtol` and `atol` from `tune_gemm.py` to compare against Torch.
     torch_rtol: float = 1e-2
     torch_atol: float = 4e-2
-    assert torch.allclose(out_torch, out_triton, rtol=torch_rtol, atol=torch_atol)
-    assert torch.allclose(out_torch, out_triton_opt, rtol=torch_rtol, atol=torch_atol)
-    assert torch.allclose(out_triton, out_triton_opt)
+    assert torch.allclose(out_torch, out_triton, rtol=torch_rtol,
+                          atol=torch_atol), "Torch and baseline Triton don't match."
+    assert torch.allclose(out_torch, out_triton_opt, rtol=torch_rtol,
+                          atol=torch_atol), "Torch and optimized Triton don't match."
+    assert tensors_match(out_triton, out_triton_opt), "Baseline Triton and optimized Triton don't match."
+
+
+# END CORRECTNESS TEST <<<<<<<<<<<<<<<<<<<<<<
+
+# BEGIN STANDALONE KERNEL LAUNCH >>>>>>>>>>>>
+
+
+def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
+    input: Tensor
+    a: Tensor
+    b: Tensor
+    output: Tensor
+    input, a, b, output = gen_tensors(*(get_target_shapes()[0]))
+    if run_baseline_kernel:
+        triton_tem_fused_addmm_130(input, a, b, output)
+    else:
+        triton_tem_fused_addmm_130_opt(input, a, b, output)
+    return output
+
+
+# END STANDALONE KERNEL LAUNCH <<<<<<<<<<<<<<
+
+# BEGIN SCRIPT ENTRY POINT >>>>>>>>>>>>>>>>>>
+
+
+def main() -> None:
+    argc: int = len(sys.argv)
+    if argc > 1:
+        action: str = sys.argv[1].strip().lower()
+        match action:
+            case "base":
+                print("Running baseline kernel...")
+                run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=True)
+            case "opt":
+                print("Running optimized kernel...")
+                run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=False)
+            case "test":
+                print("Testing...")
+                sys.exit(pytest.main(["-vvv", __file__]))
+            case "bench":
+                print("Benchmarking...")
+                benchmark_triton_tem_fused_addmm_130_kernel.run(show_plots=False, print_data=True)
+            case _:
+                print("Unknown action.")
+                sys.exit(1)
+    else:
+        print("Running optimized kernel...")
+        run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=False)
 
 
 if __name__ == "__main__":
-    benchmark.run(show_plots=False, print_data=True)
+    main()
+
+# END SCRIPT ENTRY POINT <<<<<<<<<<<<<<<<<<<<
