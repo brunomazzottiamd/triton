@@ -182,16 +182,48 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
 # BEGIN OPTIMIZED KERNEL >>>>>>>>>>>>>>>>>>>>
 
 
-def get_triton_autotune_configs() -> list[triton.Config]:
-    block_m_range: list[int] = [128]
-    block_n_range: list[int] = [128]
-    block_k_range: list[int] = [32]
-    group_m_range: list[int] = [8]
-    matrix_instr_nonkdim_range: list[int] = [16]
+def lds_usage(block_m: int, block_n: int, block_k: int, num_stages: int) -> int:
+    assert block_m > 0
+    assert block_n > 0
+    assert block_k > 0
+    assert num_stages >= 1
+    lds_a: int = 2 * block_m * block_k
+    lda_b: int = 2 * block_k * block_n
+    if num_stages == 1:
+        return max(lds_a, lda_b)
+    else:
+        return (lds_a + lda_b) * (num_stages - 1)
+
+
+def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
+    if not full_tuning_space:
+        # Only returns the config shipped with baseline kernel.
+        return [
+            triton.Config(
+                {
+                    "BLOCK_M": 128,
+                    "BLOCK_N": 128,
+                    "BLOCK_K": 32,
+                    "GROUP_M": 8,
+                    "matrix_instr_nonkdim": 16,
+                    "waves_per_eu": 0,
+                    "kpack": 1,
+                },
+                num_stages=2,
+                num_warps=8,
+            )
+        ]
+
+    # Full tuning space:
+    block_m_range: list[int] = [32, 64, 128, 256, 512]
+    block_n_range: list[int] = [32, 64, 128, 256, 512]
+    block_k_range: list[int] = [32, 64, 128, 256]
+    group_m_range: list[int] = [1, 2, 4, 8, 16, 32]
+    matrix_instr_nonkdim_range: list[int] = [16, 32]
     waves_per_eu_range: list[int] = [0]
-    kpack_range: list[int] = [1]
-    num_warps_range: list[int] = [8]
+    kpack_range: list[int] = [1, 2]
     num_stages_range: list[int] = [2]
+    num_warps_range: list[int] = [1, 2, 4, 8]
     return [
         triton.Config(
             {
@@ -215,6 +247,8 @@ def get_triton_autotune_configs() -> list[triton.Config]:
         for kpack in kpack_range
         for num_stages in num_stages_range
         for num_warps in num_warps_range
+        # Prune configs that would exceed LDS limit.
+        if lds_usage(block_m, block_n, block_k, num_stages) <= 65536
     ]
 
 
