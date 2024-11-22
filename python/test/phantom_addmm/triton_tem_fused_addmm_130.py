@@ -13,12 +13,12 @@
 #     N = 2048
 #     K = 256
 
+import itertools
 import sys
 
+import pytest
 import torch
 from torch import Tensor
-
-import pytest
 
 import triton
 import triton.language as tl
@@ -238,15 +238,9 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
             num_stages=num_stages,
             num_warps=num_warps,
         )
-        for block_m in block_m_range
-        for block_n in block_n_range
-        for block_k in block_k_range
-        for group_m in group_m_range
-        for matrix_instr_nonkdim in matrix_instr_nonkdim_range
-        for waves_per_eu in waves_per_eu_range
-        for kpack in kpack_range
-        for num_stages in num_stages_range
-        for num_warps in num_warps_range
+        for block_m, block_n, block_k, group_m, matrix_instr_nonkdim, waves_per_eu, kpack, num_stages, num_warps in
+        itertools.product(block_m_range, block_n_range, block_k_range, group_m_range, matrix_instr_nonkdim_range,
+                          waves_per_eu_range, kpack_range, num_stages_range, num_warps_range)
         # Prune configs that would exceed LDS limit.
         if lds_usage(block_m, block_n, block_k, num_stages) <= 65536
     ]
