@@ -13,6 +13,7 @@
 #     N = 2048
 #     K = 256
 
+import argparse
 import itertools
 import sys
 
@@ -41,14 +42,18 @@ def get_target_shapes() -> list[tuple[int, int, int]]:
     ]
 
 
+DTYPE: torch.dtype = torch.bfloat16
+
+GPU_ID: int = 0
+
+
 def gen_tensors(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    device: str = "cuda"
-    dtype: torch.dtype = torch.bfloat16
+    device: str = f"cuda:{GPU_ID}"
     torch.random.manual_seed(7)
-    input: Tensor = torch.randn((1, n), device=device, dtype=dtype)
-    a: Tensor = torch.randn((m, k), device=device, dtype=dtype)
-    b: Tensor = torch.randn((k, n), device=device, dtype=dtype)
-    output: Tensor = torch.empty((m, n), device=device, dtype=dtype)
+    input: Tensor = torch.randn((1, n), device=device, dtype=DTYPE)
+    a: Tensor = torch.randn((m, k), device=device, dtype=DTYPE)
+    b: Tensor = torch.randn((k, n), device=device, dtype=DTYPE)
+    output: Tensor = torch.empty((m, n), device=device, dtype=DTYPE)
     return input, a, b, output
 
 
@@ -444,29 +449,41 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
 # BEGIN SCRIPT ENTRY POINT >>>>>>>>>>>>>>>>>>
 
 
+def parse_args() -> argparse.Namespace:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description="Phantom tem_fused_addmm_130 kernel driver.",
+                                                              add_help=False)
+    actions: list[str] = ["base", "opt", "test", "bench"]
+    parser.add_argument(
+        "action", nargs="?", default=actions[0], choices=actions,
+        help=f"Select what to do. Can be one of the following: {', '.join(actions)}. Defaults to {actions[0]}.")
+    gpu_ids: list[int] = list(range(torch.cuda.device_count()))
+    assert len(gpu_ids) > 0
+    parser.add_argument(
+        "-g", "--gpu", type=int, default=gpu_ids[0], choices=gpu_ids, help=
+        f"GPU ID to use. Can be one of the following: {', '.join(str(gpu_id) for gpu_id in gpu_ids)}. Defaults to {gpu_ids[0]}."
+    )
+    parser.add_argument("-h", "--help", action="help", help="Show this help message and exit.")
+    args: argparse.Namespace = parser.parse_args()
+    global GPU_ID
+    GPU_ID = args.gpu
+    return args
+
+
 def main() -> None:
-    argc: int = len(sys.argv)
-    if argc > 1:
-        action: str = sys.argv[1].strip().lower()
-        match action:
-            case "base":
-                print("Running baseline kernel...")
-                run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=True)
-            case "opt":
-                print("Running optimized kernel...")
-                run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=False)
-            case "test":
-                print("Testing...")
-                sys.exit(pytest.main(["-vvv", __file__]))
-            case "bench":
-                print("Benchmarking...")
-                benchmark_triton_tem_fused_addmm_130_kernel.run(show_plots=False, print_data=True)
-            case _:
-                print("Unknown action.")
-                sys.exit(1)
-    else:
-        print("Running optimized kernel...")
-        run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=False)
+    args: argparse.Namespace = parse_args()
+    match args.action:
+        case "base":
+            print("Running baseline kernel...")
+            run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=True)
+        case "opt":
+            print("Running optimized kernel...")
+            run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel=False)
+        case "test":
+            print("Testing...")
+            sys.exit(pytest.main(["-vvv", __file__]))
+        case "bench":
+            print("Benchmarking...")
+            benchmark_triton_tem_fused_addmm_130_kernel.run(show_plots=False, print_data=True)
 
 
 if __name__ == "__main__":
