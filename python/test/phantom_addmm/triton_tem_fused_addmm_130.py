@@ -220,15 +220,15 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
         ]
 
     # Full tuning space:
-    block_m_range: list[int] = [32, 64, 128, 256, 512]
-    block_n_range: list[int] = [32, 64, 128, 256, 512]
+    block_m_range: list[int] = [64, 128, 256, 512]
+    block_n_range: list[int] = [64, 128, 256, 512]
     block_k_range: list[int] = [32, 64, 128, 256]
-    group_m_range: list[int] = [1, 2, 4, 8, 16, 32]
+    group_m_range: list[int] = [4, 8, 16]
     matrix_instr_nonkdim_range: list[int] = [16, 32]
     waves_per_eu_range: list[int] = [0]
     kpack_range: list[int] = [1, 2]
     num_stages_range: list[int] = [2]
-    num_warps_range: list[int] = [1, 2, 4, 8]
+    num_warps_range: list[int] = [4, 8]
     return [
         triton.Config(
             {
