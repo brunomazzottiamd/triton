@@ -1,0 +1,13 @@
+diff --git a/python/test/phantom_addmm/triton_tem_fused_addmm_130.py b/python/test/phantom_addmm/triton_tem_fused_addmm_130.py
+index 2a129a650..9f292af9f 100755
+--- a/python/test/phantom_addmm/triton_tem_fused_addmm_130.py
++++ b/python/test/phantom_addmm/triton_tem_fused_addmm_130.py
+@@ -352,7 +352,7 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
+     xindex = stride_cn * idx_n + stride_cm * idx_m
+     tmp0 = tl.load(in_ptr0 + (tl.broadcast_to(idx_n, acc.shape)), mask, eviction_policy='evict_last').to(tl.float32)
+     tmp1 = acc + tmp0
+-    tl.store(out_ptr0 + (tl.broadcast_to(xindex, acc.shape)), tmp1, mask)
++    tl.store(out_ptr0 + (tl.broadcast_to(xindex, acc.shape)), tmp1, mask, cache_modifier=".wt")
+
+
+ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: Tensor) -> None:

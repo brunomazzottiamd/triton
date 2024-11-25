@@ -10,3 +10,6 @@
 * `opt03_nonkdim16-tl-constexpr.diff`:
   * Use `tl.constexpr` as much as possible.
   * Base commit: `2a24b9cfc`
+* `opt04_autotune-cache-wt.diff`:
+  * Use cache write-through `cache_modifier=".wt"` in `tl.store`
+  * Base commit: `dd5cbc1b5`
