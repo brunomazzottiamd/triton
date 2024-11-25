@@ -202,8 +202,8 @@ def lds_usage(block_m: int, block_n: int, block_k: int, num_stages: int) -> int:
 
 def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
-        # Only returns the config shipped with baseline kernel.
         return [
+            # Config shipped with baseline kernel:
             triton.Config(
                 {
                     "BLOCK_M": 128,
@@ -216,7 +216,34 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
                 },
                 num_stages=2,
                 num_warps=8,
-            )
+            ),
+            # Configs found exploring full tuning space:
+            triton.Config(
+                {
+                    "BLOCK_M": 128,
+                    "BLOCK_N": 128,
+                    "BLOCK_K": 64,
+                    "GROUP_M": 16,
+                    "matrix_instr_nonkdim": 16,
+                    "waves_per_eu": 0,
+                    "kpack": 1,
+                },
+                num_stages=2,
+                num_warps=8,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_M": 128,
+                    "BLOCK_N": 128,
+                    "BLOCK_K": 64,
+                    "GROUP_M": 16,
+                    "matrix_instr_nonkdim": 16,
+                    "waves_per_eu": 0,
+                    "kpack": 2,
+                },
+                num_stages=2,
+                num_warps=8,
+            ),
         ]
 
     # Full tuning space:
@@ -251,7 +278,7 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
     ]
 
 
-@triton.autotune(configs=get_triton_autotune_configs(), key=["M", "N", "K"])
+@triton.autotune(configs=get_triton_autotune_configs(full_tuning_space=False), key=["M", "N", "K"])
 @triton.heuristics({"EVEN_K": lambda args: args["K"] % args["BLOCK_K"] == 0})
 @triton.jit
 def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #

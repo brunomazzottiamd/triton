@@ -5,6 +5,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 N=30
 
 for (( i=1; i<=N; i++ )); do
+    rm --recursive --force ~/.triton/cache
     "${script_dir}/triton_tem_fused_addmm_130.py" bench
 done | \
 awk '
@@ -37,6 +38,7 @@ BEGIN {
     sub(/, num_ctas: 1/, "", config);
     sub(/, maxnreg: None/, "", config);
     configs[config]++;
+    # printf "Best config: %s\n", config
 }
 
 END {
