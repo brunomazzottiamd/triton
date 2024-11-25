@@ -202,47 +202,66 @@ def lds_usage(block_m: int, block_n: int, block_k: int, num_stages: int) -> int:
 
 def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
+        block_m: int = 128
+        block_n: int = 128
+        matrix_instr_nonkdim: int = 16
+        waves_per_eu: int = 0
+        num_stages: int = 2
+        num_warps: int = 8
         return [
             # Config shipped with baseline kernel:
             triton.Config(
                 {
-                    "BLOCK_M": 128,
-                    "BLOCK_N": 128,
+                    "BLOCK_M": block_m,
+                    "BLOCK_N": block_n,
                     "BLOCK_K": 32,
                     "GROUP_M": 8,
-                    "matrix_instr_nonkdim": 16,
-                    "waves_per_eu": 0,
+                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                    "waves_per_eu": waves_per_eu,
                     "kpack": 1,
                 },
-                num_stages=2,
-                num_warps=8,
+                num_stages=num_stages,
+                num_warps=num_warps,
             ),
             # Configs found exploring full tuning space:
             triton.Config(
                 {
-                    "BLOCK_M": 128,
-                    "BLOCK_N": 128,
+                    "BLOCK_M": block_m,
+                    "BLOCK_N": block_n,
                     "BLOCK_K": 64,
                     "GROUP_M": 16,
-                    "matrix_instr_nonkdim": 16,
-                    "waves_per_eu": 0,
+                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                    "waves_per_eu": waves_per_eu,
                     "kpack": 1,
                 },
-                num_stages=2,
-                num_warps=8,
+                num_stages=num_stages,
+                num_warps=num_warps,
             ),
             triton.Config(
                 {
-                    "BLOCK_M": 128,
-                    "BLOCK_N": 128,
+                    "BLOCK_M": block_m,
+                    "BLOCK_N": block_n,
                     "BLOCK_K": 64,
                     "GROUP_M": 16,
-                    "matrix_instr_nonkdim": 16,
-                    "waves_per_eu": 0,
+                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                    "waves_per_eu": waves_per_eu,
                     "kpack": 2,
                 },
-                num_stages=2,
-                num_warps=8,
+                num_stages=num_stages,
+                num_warps=num_warps,
+            ),
+            triton.Config(
+                {
+                    "BLOCK_M": block_m,
+                    "BLOCK_N": block_n,
+                    "BLOCK_K": 64,
+                    "GROUP_M": 4,
+                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                    "waves_per_eu": waves_per_eu,
+                    "kpack": 2,
+                },
+                num_stages=num_stages,
+                num_warps=num_warps,
             ),
         ]
 
