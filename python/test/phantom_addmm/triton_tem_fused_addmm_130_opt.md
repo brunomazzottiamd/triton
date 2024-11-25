@@ -11,5 +11,8 @@
   * Use `tl.constexpr` as much as possible.
   * Base commit: `2a24b9cfc`
 * `opt04_autotune-cache-wt.diff`:
-  * Use cache write-through `cache_modifier=".wt"` in `tl.store`
+  * Use cache write-through `cache_modifier=".wt"` in `tl.store`.
+  * Base commit: `dd5cbc1b5`
+* `opt05_autotune-tune-gemm-group-m.diff`:
+  * Use L2 grouping from `tune_gemm.py`.
   * Base commit: `dd5cbc1b5`
