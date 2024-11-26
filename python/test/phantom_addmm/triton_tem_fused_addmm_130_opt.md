@@ -16,3 +16,8 @@
 * `opt05_autotune-tune-gemm-group-m.diff`:
   * Use L2 grouping from `tune_gemm.py`.
   * Base commit: `dd5cbc1b5`
+* `opt06_autotune-no-opt-epilogue.diff`:
+  * Comment out optimize epilogue compiler pass.
+  * Base commit: `dd5cbc1b5`
+  * Gives +3% performance boost but decreases performance when combined
+    with disabling transposed MFMA layout (`0c25823cd`).

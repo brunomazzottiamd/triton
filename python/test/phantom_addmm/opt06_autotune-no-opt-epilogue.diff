@@ -1,0 +1,13 @@
+diff --git a/third_party/amd/backend/compiler.py b/third_party/amd/backend/compiler.py
+index 67dc3f2b6..054203538 100644
+--- a/third_party/amd/backend/compiler.py
++++ b/third_party/amd/backend/compiler.py
+@@ -213,7 +213,7 @@ class HIPBackend(BaseBackend):
+         passes.ttgpuir.add_optimize_thread_locality(pm)
+         amd.passes.ttgpuir.add_accelerate_matmul(pm, options.arch, options.matrix_instr_nonkdim, options.kpack)
+         passes.ttgpuir.add_remove_layout_conversions(pm)
+-        amd.passes.ttgpuir.add_optimize_epilogue(pm)
++        # amd.passes.ttgpuir.add_optimize_epilogue(pm)
+         passes.ttgpuir.add_optimize_dot_operands(pm, True)
+         if amd.has_matrix_core_feature(options.arch):
+             assert options.num_stages != 0, ("Triton AMD backend pipeliner has been updated. "
