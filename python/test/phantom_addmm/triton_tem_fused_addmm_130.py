@@ -23,6 +23,7 @@ import sys
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 import triton
@@ -106,6 +107,22 @@ def gen_tensors_ks(ks0: int, ks1: int, ks2: int) -> tuple[Tensor, Tensor, Tensor
     assert ks1 > 0
     assert ks2 > 0
     return gen_tensors_mnk(*(shape_mnk_from_shape_ks((ks0, ks1, ks2))))
+
+
+# Pad a tensor.
+def pad(x: Tensor, padding: int = 0, padding_mode: str = "none") -> Tensor:
+    if padding <= 0 or padding_mode not in ["right", "bottom"]:
+        return x
+    assert x.dim() == 2
+    if padding_mode == "right":
+        padded_x: Tensor = F.pad(x, (0, padding), mode="constant", value=0)
+        padded_x = padded_x[:, :x.shape[1]]
+        return padded_x
+    elif padding_mode == "bottom":
+        padded_x: Tensor = F.pad(x, (0, 0, 0, padding), mode="constant", value=0)
+        padded_x = padded_x[:x.shape[0], :]
+        return padded_x
+    return x
 
 
 # END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
