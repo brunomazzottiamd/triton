@@ -125,6 +125,9 @@ def pad(x: Tensor, padding: int = 0, padding_mode: str = "none") -> Tensor:
     return x
 
 
+PAD_A: bool = False
+PAD_B: bool = False
+
 # END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 # BEGIN BASELINE KERNEL >>>>>>>>>>>>>>>>>>>>>
@@ -488,6 +491,10 @@ def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(input, a, b, output),
                                                      quantiles=quantiles)
     if provider == "optimized":
+        if PAD_A:
+            a = pad(a, padding=64, padding_mode="right")
+        if PAD_B:
+            b = pad(b, padding=64, padding_mode="bottom")
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(input, a, b, output),
                                                      quantiles=quantiles)
         print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt.best_config}")
@@ -518,10 +525,12 @@ def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int) -> None:
     b: Tensor
     out_triton: Tensor
     input, a, b, out_triton = gen_tensors_mnk(m, n, k)
+    a_triton_opt: Tensor = pad(a, padding=64, padding_mode="right") if PAD_A else a
+    b_triton_opt: Tensor = pad(b, padding=64, padding_mode="bottom") if PAD_B else b
     out_triton_opt: Tensor = out_triton.clone()
     out_torch: Tensor = torch_tem_fused_addmm_130(input, a, b)
     triton_tem_fused_addmm_130(input, a, b, out_triton)
-    triton_tem_fused_addmm_130_opt(input, a, b, out_triton_opt)
+    triton_tem_fused_addmm_130_opt(input, a_triton_opt, b_triton_opt, out_triton_opt)
     # Using highest `rtol` and `atol` from `tune_gemm.py` to compare against Torch.
     torch_rtol: float = 1e-2
     torch_atol: float = 4e-2
@@ -546,6 +555,10 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
     if run_baseline_kernel:
         triton_tem_fused_addmm_130(input, a, b, output)
     else:
+        if PAD_A:
+            a = pad(a, padding=64, padding_mode="right")
+        if PAD_B:
+            b = pad(b, padding=64, padding_mode="bottom")
         triton_tem_fused_addmm_130_opt(input, a, b, output)
     return output
 
