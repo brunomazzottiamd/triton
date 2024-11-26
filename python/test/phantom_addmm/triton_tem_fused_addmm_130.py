@@ -9,9 +9,13 @@
 #     B -> (K, N)
 #    IN -> (1, N)
 #   OUT -> (M, N)
-#     M = ks0 + ks2 + (10 * ks1) (ks* are unknown)
-#     N = 2048
-#     K = 256
+#     M = ks0 + ks2 + 10 * ks1
+#   ks0 =  1287
+#   ks1 =    45
+#   ks2 = 82385
+#     M = 84122
+#     N =  2048
+#     K =   256
 
 import argparse
 import itertools
@@ -27,11 +31,54 @@ import triton.language as tl
 # BEGIN UTILITIES >>>>>>>>>>>>>>>>>>>>>>>>>>
 # Use by benchmark and correctness test.
 
+GLOBAL_N: tl.constexpr = 2048
+GLOBAL_K: tl.constexpr = 256
 
-def get_target_shapes() -> list[tuple[int, int, int]]:
+
+# Get shapes in terms of ks0, ks1 and ks2.
+def get_target_shapes_ks() -> list[tuple[int, int, int]]:
     return [
-        (84122, 2048, 256),
+        (1287, 45, 82385),
     ]
+
+
+# Compute m from ks0, ks1 and ks2.
+def m_from_ks(ks0: int, ks1: int, ks2: int) -> int:
+    assert ks0 > 0
+    assert ks1 > 0
+    assert ks2 > 0
+    return ks0 + ks2 + 10 * ks1
+
+
+# Compute (m, n, k) shape from (ks0, ks1, ks2) shape.
+def shape_mnk_from_shape_ks(shape_ks: tuple[int, int, int]) -> tuple[int, int, int]:
+    assert len(shape_ks) == 3
+    assert shape_ks[0] > 0
+    assert shape_ks[1] > 0
+    assert shape_ks[2] > 0
+    return (m_from_ks(*shape_ks), GLOBAL_N, GLOBAL_K)
+
+
+# Get shapes in terms of m, n and k.
+def get_target_shapes_mnk() -> list[tuple[int, int, int]]:
+    return [shape_mnk_from_shape_ks(shape_ks) for shape_ks in get_target_shapes_ks()]
+
+
+# Memoize ks0, ks1 and ks2 for all m's.
+KS_FROM_M: dict[int, tuple[int, int, int]] = {m_from_ks(*shape_ks): shape_ks for shape_ks in get_target_shapes_ks()}
+
+
+# Compute (ks0, ks1, ks2) shape from (m, n, k) shape.
+def shape_ks_from_shape_mnk(shape_mnk: tuple[int, int, int]) -> tuple[int, int, int]:
+    assert len(shape_mnk) == 3
+    m: int
+    n: int
+    k: int
+    m, n, k = shape_mnk
+    assert m > 0
+    assert n == GLOBAL_N
+    assert k == GLOBAL_K
+    return KS_FROM_M[m]
 
 
 DTYPE: torch.dtype = torch.bfloat16
@@ -39,7 +86,11 @@ DTYPE: torch.dtype = torch.bfloat16
 GPU_ID: int = 0
 
 
-def gen_tensors(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+# Generate tensors in terms of m, n and k.
+def gen_tensors_mnk(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    assert m > 0
+    assert n > 0
+    assert k > 0
     device: str = f"cuda:{GPU_ID}"
     torch.random.manual_seed(7)
     input: Tensor = torch.randn((1, n), device=device, dtype=DTYPE)
@@ -47,6 +98,14 @@ def gen_tensors(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]
     b: Tensor = torch.randn((k, n), device=device, dtype=DTYPE)
     output: Tensor = torch.empty((m, n), device=device, dtype=DTYPE)
     return input, a, b, output
+
+
+# Generate tensors in terms of ks0, ks1 and ks2.
+def gen_tensors_ks(ks0: int, ks1: int, ks2: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    assert ks0 > 0
+    assert ks1 > 0
+    assert ks2 > 0
+    return gen_tensors_mnk(*(shape_mnk_from_shape_ks((ks0, ks1, ks2))))
 
 
 # END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -70,9 +129,7 @@ def triton_tem_fused_addmm_130_kernel(in_ptr0, arg_A, arg_B, out_ptr0, ks0, ks1,
     A = arg_A
     B = arg_B
 
-    # Original line:
-    # M = ks0 + ks2 + (10*ks1)
-    M = ks0  # Using ks0 as placeholder for M
+    M = ks0 + ks2 + (10 * ks1)
     N = 2048
     K = 256
     if M * N == 0:
@@ -142,13 +199,13 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
     k_a: int
     m, k_a = a.shape
     assert m > 0
-    assert k_a == 256
+    assert k_a == GLOBAL_K
     assert a.stride() == (k_a, 1)
     k_b: int
     n: int
     k_b, n = b.shape
     assert k_b == k_a
-    assert n == 2048
+    assert n == GLOBAL_N
     assert b.stride() == (n, 1)
     assert input.shape == (1, n)
     assert input.stride() == (n, 1)
@@ -158,9 +215,15 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
     block_m: int = 128
     block_n: int = 128
     grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
-    # Using ks0 as placeholder for M. ks1 and ks2 are unused.
+    # Get ks0, ks1 and k2:
+    ks0: int
+    ks1: int
+    ks2: int
+    ks0, ks1, ks2 = shape_ks_from_shape_mnk((m, n, k_a))
+    # Launch the kernel:
     triton_tem_fused_addmm_130_kernel[grid](
-        input, a, b, output, m, 0, 0,  #
+        input, a, b, output,  #
+        ks0, ks1, ks2,  #
         num_warps=8, num_stages=2, matrix_instr_nonkdim=16,  #
     )
 
@@ -267,19 +330,22 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
     ]
 
 
-@triton.autotune(configs=get_triton_autotune_configs(full_tuning_space=False), key=["M", "N", "K"])
-@triton.heuristics({"EVEN_K": lambda args: args["K"] % args["BLOCK_K"] == 0})
+@triton.autotune(configs=get_triton_autotune_configs(full_tuning_space=False), key=["ks0", "ks1", "ks2"])
+@triton.heuristics({"EVEN_K": lambda args: GLOBAL_K % args["BLOCK_K"] == 0})
 @triton.jit
 def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
-                                          M: int, N: int, K: int,  #
+                                          ks0: int, ks1: int, ks2: int,  #
                                           stride_am: int, stride_ak: int,  #
                                           stride_bk: int, stride_bn: int,  #
                                           stride_cm: int, stride_cn: int,  #
-                                          stride_xxx: int,  #
+                                          stride_xxx: int,  # TODO: Use this stride in the kernel!
                                           BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
                                           GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
     ACC_TYPE: tl.constexpr = tl.float32
 
+    M = ks0 + ks2 + 10 * ks1
+    N: tl.constexpr = GLOBAL_N
+    K: tl.constexpr = GLOBAL_K
     if M * N == 0:
         # early exit due to zero-size input(s)
         return
@@ -349,22 +415,29 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
     k_a: int
     m, k_a = a.shape
     assert m > 0
-    assert k_a > 0
+    assert k_a == GLOBAL_K
     k_b: int
     n: int
     k_b, n = b.shape
     assert k_b == k_a
-    assert n > 0
+    assert n == GLOBAL_N
     assert input.shape == (1, n)
     assert output.shape == (m, n)
+    # Grid is a lambda because block size is a tunable parameter:
     grid = lambda args: (triton.cdiv(m, args["BLOCK_M"]) * triton.cdiv(n, args["BLOCK_N"]), )
+    # Get ks0, ks1 and k2:
+    ks0: int
+    ks1: int
+    ks2: int
+    ks0, ks1, ks2 = shape_ks_from_shape_mnk((m, n, k_a))
+    # Launch the kernel:
     triton_tem_fused_addmm_130_kernel_opt[grid](
         input, a, b, output,  #
-        m, n, k_a,  #
+        ks0, ks1, ks2,  #
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         output.stride(0), output.stride(1),  #
-        input.stride(0)  #
+        input.stride(0)  # TODO: Use this stride in the kernel!
     )
 
 
@@ -380,7 +453,7 @@ def tflops(m: int, n: int, k: int, ms: float) -> float:
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=["m", "n", "k"],
-        x_vals=get_target_shapes(),
+        x_vals=get_target_shapes_mnk(),
         line_arg="provider",
         line_vals=["baseline", "optimized"],
         line_names=["Baseline", "Optimized"],
@@ -392,7 +465,7 @@ def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider
     a: Tensor
     b: Tensor
     output: Tensor
-    input, a, b, output = gen_tensors(m, n, k)
+    input, a, b, output = gen_tensors_mnk(m, n, k)
     quantiles: list[float] = [0.5, 0.2, 0.8]
     if provider == "baseline":
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(input, a, b, output),
@@ -421,13 +494,13 @@ def tensors_match(a: Tensor, b: Tensor) -> bool:
     return (torch.sum(torch.abs(a - b) < 1e-06).item() / a.nelement()) > 0.9999
 
 
-@pytest.mark.parametrize("m, n, k", get_target_shapes())
+@pytest.mark.parametrize("m, n, k", get_target_shapes_mnk())
 def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int) -> None:
     input: Tensor
     a: Tensor
     b: Tensor
     out_triton: Tensor
-    input, a, b, out_triton = gen_tensors(m, n, k)
+    input, a, b, out_triton = gen_tensors_mnk(m, n, k)
     out_triton_opt: Tensor = out_triton.clone()
     out_torch: Tensor = torch_tem_fused_addmm_130(input, a, b)
     triton_tem_fused_addmm_130(input, a, b, out_triton)
@@ -452,7 +525,7 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
     a: Tensor
     b: Tensor
     output: Tensor
-    input, a, b, output = gen_tensors(*(get_target_shapes()[0]))
+    input, a, b, output = gen_tensors_mnk(*(get_target_shapes_mnk()[0]))
     if run_baseline_kernel:
         triton_tem_fused_addmm_130(input, a, b, output)
     else:
