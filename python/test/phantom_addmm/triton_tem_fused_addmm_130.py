@@ -24,14 +24,6 @@ from torch import Tensor
 import triton
 import triton.language as tl
 
-# Unused import from Triton:
-# from triton.compiler.compiler import AttrsDescriptor
-
-# Imports from TorchInductor:
-# from torch._inductor.runtime import triton_helpers, triton_heuristics
-# from torch._inductor.runtime.triton_helpers import libdevice, math as tl_math
-# from torch._inductor.runtime.hints import AutotuneHint, ReductionHint, TileHint, DeviceProperties
-
 # BEGIN UTILITIES >>>>>>>>>>>>>>>>>>>>>>>>>>
 # Use by benchmark and correctness test.
 
@@ -62,16 +54,7 @@ def gen_tensors(m: int, n: int, k: int) -> tuple[Tensor, Tensor, Tensor, Tensor]
 # BEGIN BASELINE KERNEL >>>>>>>>>>>>>>>>>>>>>
 
 
-# TorchInductor decorator:
-# @triton_heuristics.template(
-#     num_stages=0,
-#     num_warps=8,
-#     triton_meta={'signature': {'in_ptr0': '*bf16', 'arg_A': '*bf16', 'arg_B': '*bf16', 'out_ptr0': '*bf16', 'ks0': 'i32', 'ks1': 'i32', 'ks2': 'i32'}, 'device': DeviceProperties(type='hip', index=0, cc='gfx942', major=9, regs_per_multiprocessor=65536, max_threads_per_multi_processor=2048, multi_processor_count=304, warp_size=64), 'constants': {}, 'configs': [AttrsDescriptor(divisible_by_16=(0, 1, 2, 3), equal_to_1=())], 'matrix_instr_nonkdim': 16},
-#     inductor_meta={'kernel_name': 'triton_tem_fused_addmm_130', 'backend_hash': '84A5DCCC80847F1B959AF2B3A2B81C33799D98096FAB4268872A7F9125762A48', 'are_deterministic_algorithms_enabled': False, 'assert_indirect_indexing': True, 'autotune_local_cache': True, 'autotune_pointwise': True, 'autotune_remote_cache': None, 'force_disable_caches': False, 'dynamic_scale_rblock': True, 'max_autotune': True, 'max_autotune_pointwise': False, 'min_split_scan_rblock': 256, 'spill_threshold': 16, 'store_cubin': True, 'is_hip': True, 'is_fbcode': True},
-# )
 @triton.jit
-# Original line:
-# def triton_tem_fused_addmm_130(in_ptr0, arg_A, arg_B, out_ptr0, ks0, ks1, ks2):
 def triton_tem_fused_addmm_130_kernel(in_ptr0, arg_A, arg_B, out_ptr0, ks0, ks1, ks2):
     GROUP_M: tl.constexpr = 8
     EVEN_K: tl.constexpr = True
@@ -243,19 +226,6 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
                     "BLOCK_N": block_n,
                     "BLOCK_K": 64,
                     "GROUP_M": 16,
-                    "matrix_instr_nonkdim": matrix_instr_nonkdim,
-                    "waves_per_eu": waves_per_eu,
-                    "kpack": 2,
-                },
-                num_stages=num_stages,
-                num_warps=num_warps,
-            ),
-            triton.Config(
-                {
-                    "BLOCK_M": block_m,
-                    "BLOCK_N": block_n,
-                    "BLOCK_K": 64,
-                    "GROUP_M": 4,
                     "matrix_instr_nonkdim": matrix_instr_nonkdim,
                     "waves_per_eu": waves_per_eu,
                     "kpack": 2,
