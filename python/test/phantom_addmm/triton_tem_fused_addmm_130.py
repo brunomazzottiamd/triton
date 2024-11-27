@@ -144,15 +144,16 @@ def pad_b(b: Tensor) -> Tensor:
 
 
 @triton.jit
-def triton_tem_fused_addmm_130_kernel(in_ptr0, arg_A, arg_B, out_ptr0, ks0, ks1, ks2):
-    GROUP_M: tl.constexpr = 8
+def triton_tem_fused_addmm_130_kernel(in_ptr0, arg_A, arg_B, out_ptr0,  #
+                                      ks0, ks1, ks2):
+    GROUP_M: tl.constexpr = 8  # best config is 16
     EVEN_K: tl.constexpr = True
     ALLOW_TF32: tl.constexpr = False
     ACC_TYPE: tl.constexpr = tl.float32
     B_PROLOGUE_CAST_TYPE: tl.constexpr = None
     BLOCK_M: tl.constexpr = 128
     BLOCK_N: tl.constexpr = 128
-    BLOCK_K: tl.constexpr = 32
+    BLOCK_K: tl.constexpr = 32  # best config is 64
     # Original line:
     # matrix_instr_nonkdim: tl.constexpr = 16
     # Removed to comply with `ruff`'s F841 warning.
@@ -255,6 +256,7 @@ def triton_tem_fused_addmm_130(input: Tensor, a: Tensor, b: Tensor, output: Tens
         input, a, b, output,  #
         ks0, ks1, ks2,  #
         num_warps=8, num_stages=2, matrix_instr_nonkdim=16,  #
+        kpack=1,  # best config is 2
     )
 
 
@@ -363,19 +365,26 @@ def get_triton_autotune_configs(full_tuning_space: bool = False) -> list[triton.
 @triton.autotune(configs=get_triton_autotune_configs(full_tuning_space=False), key=["ks0", "ks1", "ks2"])
 @triton.heuristics({"EVEN_K": lambda args: GLOBAL_K % args["BLOCK_K"] == 0})
 @triton.jit
-def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
-                                          ks0: int, ks1: int, ks2: int,  #
-                                          stride_am: int, stride_ak: int,  #
-                                          stride_bk: int, stride_bn: int,  #
-                                          stride_cm: int, stride_cn: int,  #
-                                          stride_xxx: int,  # TODO: Use this stride in the kernel!
+def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0,  #
+                                          ks0, ks1, ks2,  #
+                                          stride_am, stride_ak,  #
+                                          stride_bk, stride_bn,  #
+                                          stride_cm, stride_cn,  #
+                                          stride_in,  # TODO: Use this stride in the kernel or remove it!
                                           BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
                                           GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
+    ALLOW_TF32: tl.constexpr = False
     ACC_TYPE: tl.constexpr = tl.float32
+    B_PROLOGUE_CAST_TYPE: tl.constexpr = None
+    # Original line:
+    # matrix_instr_nonkdim: tl.constexpr = 16
+    # Removed to comply with `ruff`'s F841 warning.
+    A = arg_A
+    B = arg_B
 
     M = ks0 + ks2 + 10 * ks1
-    N: tl.constexpr = GLOBAL_N
-    K: tl.constexpr = GLOBAL_K
+    N = GLOBAL_N
+    K = GLOBAL_K
     if M * N == 0:
         # early exit due to zero-size input(s)
         return
@@ -394,21 +403,7 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
 
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    # Was getting
-    # > error: operand #0 does not dominate this use
-    # in
-    # > tl.multiple_of(rm % M, BLOCK_M)
-    # > tl.multiple_of(rn % N, BLOCK_N)
-    # when M and N are passed as kernel arguments.
-    # if (stride_am == 1 and stride_ak == M) or (stride_am == K and stride_ak == 1):
-    #     ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    # else:
-    #     ram = rm % M
     ram = rm % M
-    # if (stride_bk == 1 and stride_bn == K) or (stride_bk == N and stride_bn == 1):
-    #     rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    # else:
-    #     rbn = rn % N
     rbn = rn % N
     rk = tl.arange(0, BLOCK_K)
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
@@ -422,7 +417,9 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, A, B, out_ptr0,  #
         else:
             a = tl.load(A, mask=rk[None, :] < k, other=0.)
             b = tl.load(B, mask=rk[:, None] < k, other=0.)
-        acc += tl.dot(a, b)
+        if B_PROLOGUE_CAST_TYPE is not None:
+            b = b.to(B_PROLOGUE_CAST_TYPE)
+        acc += tl.dot(a, b, allow_tf32=ALLOW_TF32)
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
 
@@ -467,7 +464,7 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         output.stride(0), output.stride(1),  #
-        input.stride(0)  # TODO: Use this stride in the kernel!
+        input.stride(0)  # TODO: Use this stride in the kernel or remove it!
     )
 
 
