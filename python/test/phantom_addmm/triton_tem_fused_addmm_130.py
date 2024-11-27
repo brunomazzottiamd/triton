@@ -109,24 +109,34 @@ def gen_tensors_ks(ks0: int, ks1: int, ks2: int) -> tuple[Tensor, Tensor, Tensor
     return gen_tensors_mnk(*(shape_mnk_from_shape_ks((ks0, ks1, ks2))))
 
 
-# Pad a tensor.
-def pad(x: Tensor, padding: int = 0, padding_mode: str = "none") -> Tensor:
-    if padding <= 0 or padding_mode not in ["right", "bottom"]:
-        return x
+PAD_A: bool = False
+PAD_B: bool = False
+
+
+# Pad a matrix.
+def pad(x: Tensor, padding: int, padding_mode: str) -> Tensor:
+    assert padding > 0
+    assert padding_mode in ["right", "bottom"]
     assert x.dim() == 2
     if padding_mode == "right":
         padded_x: Tensor = F.pad(x, (0, padding), mode="constant", value=0)
         padded_x = padded_x[:, :x.shape[1]]
         return padded_x
-    elif padding_mode == "bottom":
+    if padding_mode == "bottom":
         padded_x: Tensor = F.pad(x, (0, 0, 0, padding), mode="constant", value=0)
         padded_x = padded_x[:x.shape[0], :]
         return padded_x
-    return x
 
 
-PAD_A: bool = False
-PAD_B: bool = False
+# Pad A matrix along K dimension.
+def pad_a(a: Tensor) -> Tensor:
+    return pad(a, 64, "right") if PAD_A else a
+
+
+# Pad B matrix along K dimension.
+def pad_b(b: Tensor) -> Tensor:
+    return pad(b, 64, "bottom") if PAD_B else b
+
 
 # END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -491,10 +501,8 @@ def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(input, a, b, output),
                                                      quantiles=quantiles)
     if provider == "optimized":
-        if PAD_A:
-            a = pad(a, padding=64, padding_mode="right")
-        if PAD_B:
-            b = pad(b, padding=64, padding_mode="bottom")
+        a = pad_a(a)
+        b = pad_b(b)
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(input, a, b, output),
                                                      quantiles=quantiles)
         print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt.best_config}")
@@ -525,12 +533,10 @@ def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int) -> None:
     b: Tensor
     out_triton: Tensor
     input, a, b, out_triton = gen_tensors_mnk(m, n, k)
-    a_triton_opt: Tensor = pad(a, padding=64, padding_mode="right") if PAD_A else a
-    b_triton_opt: Tensor = pad(b, padding=64, padding_mode="bottom") if PAD_B else b
     out_triton_opt: Tensor = out_triton.clone()
     out_torch: Tensor = torch_tem_fused_addmm_130(input, a, b)
     triton_tem_fused_addmm_130(input, a, b, out_triton)
-    triton_tem_fused_addmm_130_opt(input, a_triton_opt, b_triton_opt, out_triton_opt)
+    triton_tem_fused_addmm_130_opt(input, pad_a(a), pad_b(b), out_triton_opt)
     # Using highest `rtol` and `atol` from `tune_gemm.py` to compare against Torch.
     torch_rtol: float = 1e-2
     torch_atol: float = 4e-2
@@ -555,11 +561,7 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
     if run_baseline_kernel:
         triton_tem_fused_addmm_130(input, a, b, output)
     else:
-        if PAD_A:
-            a = pad(a, padding=64, padding_mode="right")
-        if PAD_B:
-            b = pad(b, padding=64, padding_mode="bottom")
-        triton_tem_fused_addmm_130_opt(input, a, b, output)
+        triton_tem_fused_addmm_130_opt(input, pad_a(a), pad_b(b), output)
     return output
 
 
