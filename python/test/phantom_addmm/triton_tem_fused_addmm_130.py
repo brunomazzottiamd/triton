@@ -370,7 +370,6 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0,  #
                                           stride_am, stride_ak,  #
                                           stride_bk, stride_bn,  #
                                           stride_cm, stride_cn,  #
-                                          stride_in,  # TODO: Use this stride in the kernel or remove it!
                                           BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
                                           GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
     ALLOW_TF32: tl.constexpr = False
@@ -464,7 +463,6 @@ def triton_tem_fused_addmm_130_opt(input: Tensor, a: Tensor, b: Tensor, output: 
         a.stride(0), a.stride(1),  #
         b.stride(0), b.stride(1),  #
         output.stride(0), output.stride(1),  #
-        input.stride(0)  # TODO: Use this stride in the kernel or remove it!
     )
 
 
