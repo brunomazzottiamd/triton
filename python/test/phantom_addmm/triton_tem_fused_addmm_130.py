@@ -133,14 +133,16 @@ def pad(x: Tensor, padding: int, padding_mode: str) -> Tensor:
     assert padding > 0
     assert padding_mode in ["right", "bottom"]
     assert x.dim() == 2
+    padded_x: Tensor
     if padding_mode == "right":
-        padded_x: Tensor = F.pad(x, (0, padding), mode="constant", value=0)
+        padded_x = F.pad(x, (0, padding), mode="constant", value=0)
         padded_x = padded_x[:, :x.shape[1]]
         return padded_x
     if padding_mode == "bottom":
-        padded_x: Tensor = F.pad(x, (0, 0, 0, padding), mode="constant", value=0)
+        padded_x = F.pad(x, (0, 0, 0, padding), mode="constant", value=0)
         padded_x = padded_x[:x.shape[0], :]
         return padded_x
+    return x
 
 
 # Pad A matrix along K dimension.
@@ -517,9 +519,9 @@ def triton_tem_fused_addmm_130_opt(t: Tensors, use_autotune: bool = True) -> Non
         block_m: int = 128
         block_n: int = 128
         block_k: int = 64
-        grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
+        fix_grid: tuple[int] = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n), )
         # yapf: disable
-        triton_tem_fused_addmm_130_kernel_opt_no_autotune[grid](
+        triton_tem_fused_addmm_130_kernel_opt_no_autotune[fix_grid](
             t.input, t.a, t.b, t.output,  #
             ks0, ks1, ks2,  #
             t.a.stride(0), t.a.stride(1),  #
