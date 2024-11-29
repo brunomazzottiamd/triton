@@ -485,7 +485,7 @@ def triton_tem_fused_addmm_130_kernel_opt_no_autotune(in_ptr0, arg_A, arg_B, out
                                           GROUP_M=GROUP_M, EVEN_K=EVEN_K)
 
 
-def triton_tem_fused_addmm_130_opt(t: Tensors, use_autotune: bool = True) -> None:
+def triton_tem_fused_addmm_130_opt(t: Tensors, use_autotune: bool = False) -> None:
     m: int
     k_a: int
     m, k_a = t.a.shape
@@ -560,7 +560,8 @@ def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t), quantiles=q)
     if provider == "optimized":
         t = t.pad()
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t), quantiles=q)
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t, use_autotune=True),
+                                                     quantiles=q)
         print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt_autotune.best_config}")
     perf = lambda ms: tflops(m, n, k, ms)
     return perf(ms), perf(max_ms), perf(min_ms)
@@ -611,7 +612,7 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
     if run_baseline_kernel:
         triton_tem_fused_addmm_130(t)
     else:
-        triton_tem_fused_addmm_130_opt(t.pad(), use_autotune=False)
+        triton_tem_fused_addmm_130_opt(t.pad())
     return t.output
 
 
