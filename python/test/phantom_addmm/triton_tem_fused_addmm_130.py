@@ -93,6 +93,12 @@ class Tensors:
     def pad(self: "Tensors") -> "Tensors":
         return Tensors(self.input, pad_a(self.a), pad_b(self.b), self.output)
 
+    def trans_b(self: "Tensors") -> "Tensors":
+        return Tensors(self.input, self.a, trans_b(self.b), self.output)
+
+    def opt(self: "Tensors") -> "Tensors":
+        return self.pad().trans_b()
+
     def new_output(self: "Tensors") -> "Tensors":
         return Tensors(self.input, self.a, self.b, torch.empty_like(self.output))
 
@@ -153,6 +159,18 @@ def pad_a(a: Tensor) -> Tensor:
 # Pad B matrix along K dimension.
 def pad_b(b: Tensor) -> Tensor:
     return pad(b, 64, "bottom") if PAD_B else b
+
+
+TRANS_B: bool = False
+
+
+def trans_b(b: Tensor) -> Tensor:
+    if not TRANS_B:
+        return b
+    b_t_shape: tuple[int, int] = (b.shape[1], b.shape[0])
+    b_t: Tensor = torch.empty(b_t_shape, device=b.device, dtype=b.dtype).T
+    b_t.copy_(b)
+    return b_t
 
 
 # END UTILITIES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -558,7 +576,7 @@ def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider
     if provider == "baseline":
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t), quantiles=q)
     if provider == "optimized":
-        t = t.pad()
+        t = t.opt()
         ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t, use_autotune=True),
                                                      quantiles=q)
         print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt_autotune.best_config}")
@@ -590,7 +608,7 @@ def test_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int) -> None:
     triton_opt_t: Tensors = torch_t.new_output()
     torch_tem_fused_addmm_130(torch_t)
     triton_tem_fused_addmm_130(triton_t)
-    triton_tem_fused_addmm_130_opt(triton_opt_t.pad())
+    triton_tem_fused_addmm_130_opt(triton_opt_t.opt())
     # Using highest `rtol` and `atol` from `tune_gemm.py` to compare against Torch.
     torch_rtol: float = 1e-2
     torch_atol: float = 4e-2
@@ -611,7 +629,7 @@ def run_triton_tem_fused_addmm_130_kernel(run_baseline_kernel: bool) -> Tensor:
     if run_baseline_kernel:
         triton_tem_fused_addmm_130(t)
     else:
-        triton_tem_fused_addmm_130_opt(t.pad())
+        triton_tem_fused_addmm_130_opt(t.opt())
     return t.output
 
 
