@@ -138,7 +138,7 @@ cat "${input_file}"
 
 echo 'Generating kernel execution trace...'
 
-metrics_file="${script_dir}/perf_counters.xml"
+metrics_file="${script_dir}/../perf_counters.xml"
 
 rocprofv2 \
     -m "${metrics_file}" \
