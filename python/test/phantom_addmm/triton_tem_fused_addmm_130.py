@@ -97,7 +97,7 @@ class Tensors:
         return Tensors(self.input, self.a, trans_b(self.b), self.output)
 
     def opt(self: "Tensors") -> "Tensors":
-        return self.pad().trans_b()
+        return self.trans_b().pad()
 
     def new_output(self: "Tensors") -> "Tensors":
         return Tensors(self.input, self.a, self.b, torch.empty_like(self.output))
@@ -158,7 +158,10 @@ def pad_a(a: Tensor) -> Tensor:
 
 # Pad B matrix along K dimension.
 def pad_b(b: Tensor) -> Tensor:
-    return pad(b, 64, "bottom") if PAD_B else b
+    if not TRANS_B:
+        return pad(b, 64, "bottom") if PAD_B else b
+    else:
+        return pad(b, 64, "right") if PAD_B else b
 
 
 TRANS_B: bool = False
