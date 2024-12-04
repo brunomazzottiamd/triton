@@ -405,7 +405,7 @@ public:
     mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         oldRetType.getContext(),
         /*versionMajor*/ mfmaVersion, /*versionMinor*/ 0, warpsPerTile,
-        /*instrShape*/ mDim, nDim, /*isTransposed*/ true, CTALayout);
+        /*instrShape*/ mDim, nDim, /*isTransposed*/ false, CTALayout);
 
     Type mfmaAccType;
     if (oldRetType.getElementType().isIntOrIndex())
