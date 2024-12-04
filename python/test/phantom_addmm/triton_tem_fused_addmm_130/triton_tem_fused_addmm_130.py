@@ -563,28 +563,35 @@ def tflops(m: int, n: int, k: int, ms: float) -> float:
     return 2 * m * n * k * 1e-12 / (ms * 1e-3)
 
 
-@triton.testing.perf_report(
-    triton.testing.Benchmark(
-        x_names=["m", "n", "k"],
-        x_vals=get_target_shapes_mnk(),
-        line_arg="provider",
-        line_vals=["baseline", "optimized"],
-        line_names=["Baseline", "Optimized"],
-        plot_name="triton_tem_fused_addmm_130_performance",
-        args={},
-    ))
-def benchmark_triton_tem_fused_addmm_130_kernel(m: int, n: int, k: int, provider: str):
-    t: Tensors = gen_tensors_mnk(m, n, k)
-    q: list[float] = [0.5, 0.2, 0.8]
-    if provider == "baseline":
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t), quantiles=q)
-    if provider == "optimized":
-        t = t.opt()
-        ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t, use_autotune=True),
-                                                     quantiles=q)
-        print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt_autotune.best_config}")
-    perf = lambda ms: tflops(m, n, k, ms)
-    return perf(ms), perf(max_ms), perf(min_ms)
+def benchmark_triton_tem_fused_addmm_130_kernel(optimized_only: bool = False) -> None:
+
+    @triton.testing.perf_report(
+        triton.testing.Benchmark(
+            x_names=["m", "n", "k"],
+            x_vals=get_target_shapes_mnk(),
+            line_arg="provider",
+            line_vals=["baseline", "optimized"] if not optimized_only else ["optimized"],
+            line_names=["Baseline", "Optimized"] if not optimized_only else ["Optimized"],
+            plot_name="triton_tem_fused_addmm_130_performance",
+            args={},
+        ))
+    def benchmark(m: int, n: int, k: int, provider: str) -> None:
+        t: Tensors = gen_tensors_mnk(m, n, k)
+        q: list[float] = [0.5, 0.2, 0.8]
+        ms: float
+        min_ms: float
+        max_ms: float
+        if provider == "baseline":
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t), quantiles=q)
+        if provider == "optimized":
+            t = t.opt()
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t, use_autotune=True),
+                                                         quantiles=q)
+            print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt_autotune.best_config}")
+        perf = lambda ms: tflops(m, n, k, ms)
+        return perf(ms), perf(max_ms), perf(min_ms)
+
+    benchmark.run(show_plots=False, print_data=True)
 
 
 # END BENCHMARK <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -654,6 +661,8 @@ def parse_args() -> argparse.Namespace:
         "-g", "--gpu", type=int, default=gpu_ids[0], choices=gpu_ids, help=
         f"GPU ID to use. Can be one of the following: {', '.join(str(gpu_id) for gpu_id in gpu_ids)}. Defaults to {gpu_ids[0]}."
     )
+    parser.add_argument("--bench-opt-only", action="store_true", default=False,
+                        help="Benchmark only the optimized kernel. Defaults to False")
     parser.add_argument("-h", "--help", action="help", help="Show this help message and exit.")
     args: argparse.Namespace = parser.parse_args()
     global GPU_ID
@@ -675,7 +684,7 @@ def main() -> None:
             sys.exit(pytest.main(["-vvv", __file__]))
         case "bench":
             print("Benchmarking...")
-            benchmark_triton_tem_fused_addmm_130_kernel.run(show_plots=False, print_data=True)
+            benchmark_triton_tem_fused_addmm_130_kernel(optimized_only=args.bench_opt_only)
 
 
 if __name__ == "__main__":
