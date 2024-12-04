@@ -130,7 +130,7 @@ def gen_tensors_ks(ks0: int, ks1: int, ks2: int) -> Tensors:
     return gen_tensors_mnk(*(shape_mnk_from_shape_ks((ks0, ks1, ks2))))
 
 
-PAD_A: bool = False
+PAD_A: bool = True
 PAD_B: bool = False
 
 
@@ -164,7 +164,7 @@ def pad_b(b: Tensor) -> Tensor:
         return pad(b, 64, "right") if PAD_B else b
 
 
-TRANS_B: bool = False
+TRANS_B: bool = True
 
 
 def trans_b(b: Tensor) -> Tensor:
