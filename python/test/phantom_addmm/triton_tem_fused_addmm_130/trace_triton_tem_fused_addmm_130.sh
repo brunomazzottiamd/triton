@@ -24,6 +24,11 @@ copy_kernel_file() {
     cp "${kernel_file}" "${output_dir}"
 }
 
+clean_triton_cache() {
+    triton_cache_dir="${HOME}/.triton/cache"
+    echo "Cleaning Triton cache at [${triton_cache_dir}]..."
+    remove "${triton_cache_dir}"
+}
 
 ### Start tracing script
 
@@ -63,15 +68,6 @@ echo 'Cleaning older files from previous runs...'
 remove "${output_dir}" "${output_zip}"
 
 
-### Cleanup Triton cache
-
-triton_cache_dir="${HOME}/.triton/cache"
-
-echo "Cleaning Triton cache at [${triton_cache_dir}]..."
-
-remove "${triton_cache_dir}"
-
-
 ### Create new empty output directory
 
 echo "Creating new empty output directory [${output_dir}]..."
@@ -82,6 +78,8 @@ mkdir --parents "${output_dir}"
 ### Get kernel dispatch ID
 
 echo 'Getting kernel dispatch ID...'
+
+clean_triton_cache
 
 dispatch_id=$(rocprofv2 \
     "${kernel_program[@]}" \
@@ -137,6 +135,8 @@ cat "${input_file}"
 ### Generate kernel execution trace
 
 echo 'Generating kernel execution trace...'
+
+clean_triton_cache
 
 metrics_file="${script_dir}/../perf_counters.xml"
 
