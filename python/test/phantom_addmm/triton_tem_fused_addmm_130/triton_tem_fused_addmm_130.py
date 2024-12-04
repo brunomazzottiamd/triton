@@ -19,6 +19,7 @@
 
 import argparse
 import itertools
+import os
 import sys
 from dataclasses import dataclass
 
@@ -672,6 +673,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args: argparse.Namespace = parse_args()
+    if "AMD_INSERT_AMDGCN_FILE" in os.environ.keys() and "AMD_INSERT_AMDGCN_KERNEL" in os.environ.keys():
+        asm_patch_kernel: str = str(os.environ["AMD_INSERT_AMDGCN_KERNEL"])
+        asm_patch_file: str = str(os.environ["AMD_INSERT_AMDGCN_FILE"])
+        print(
+            f"WARNING: Kernel [{asm_patch_kernel}] assembly will be patched with the content of file [{asm_patch_file}]."
+        )
     match args.action:
         case "base":
             print("Running baseline kernel...")
