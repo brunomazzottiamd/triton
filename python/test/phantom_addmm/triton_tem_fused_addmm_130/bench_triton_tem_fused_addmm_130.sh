@@ -16,7 +16,7 @@ BEGIN {
     baseline_sum_sq = 0;
     optimized_sum_sq = 0;
     count = 0;
-    print "      Baseline  Optimized";
+    print "    Baseline Optimized";
 }
 
 # Performance line:
@@ -28,7 +28,7 @@ BEGIN {
     baseline_sum_sq += baseline * baseline;
     optimized_sum_sq += optimized * optimized;
     count++;
-    printf "%03d %.6f %.6f\n", count, baseline, optimized;
+    printf "%03d %.2f   %.2f\n", count, baseline, optimized;
 }
 
 # Best config line:
@@ -47,11 +47,11 @@ END {
         optimized_mean = optimized_sum / count;
         baseline_stdev = sqrt((baseline_sum_sq / count) - (baseline_mean * baseline_mean));
         optimized_stdev = sqrt((optimized_sum_sq / count) - (optimized_mean * optimized_mean));
-        printf "\n Baseline: %.6f ± %.6f\n", baseline_mean, baseline_stdev;
-        printf "Optimized: %.6f ± %.6f\n", optimized_mean, optimized_stdev;
+        printf "\n Baseline: %.2f ± %.2f\n", baseline_mean, baseline_stdev;
+        printf "Optimized: %.2f ± %.2f\n", optimized_mean, optimized_stdev;
 	if (baseline_mean != 0) {
 	   mean_speedup = optimized_mean / baseline_mean
-	   printf "\nMean Speedup (Optimized / Baseline): %.6f\n", mean_speedup;
+	   printf "\nMean Speedup (Optimized / Baseline): %.2f\n", mean_speedup;
 	}
 	print "\nConfigs Frequency:"
 	for (config in configs) {
