@@ -2,11 +2,6 @@
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
-# Assembly injection control:
-# TODO: Why it's not working?
-# export AMD_INSERT_AMDGCN_KERNEL='triton_tem_fused_addmm_130_kernel_opt_no_autotune'
-# export AMD_INSERT_AMDGCN_FILE="${script_dir}/${AMD_INSERT_AMDGCN_KERNEL}.amdgcn"
-
 N=30
 
 for (( i=1; i<=N; i++ )); do

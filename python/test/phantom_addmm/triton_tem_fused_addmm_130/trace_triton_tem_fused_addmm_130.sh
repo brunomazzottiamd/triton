@@ -47,11 +47,6 @@ echo "TRACING TRITON KERNEL [${kernel_source}]"
 echo "Kernel variation is [${kernel_variation}]."
 echo "Kernel name is [${kernel_name}]."
 
-# Assembly injection control:
-# TODO: Why it's not working?
-# export AMD_INSERT_AMDGCN_KERNEL='triton_tem_fused_addmm_130_kernel_opt_no_autotune'
-# export AMD_INSERT_AMDGCN_FILE="${script_dir}/${AMD_INSERT_AMDGCN_KERNEL}.amdgcn"
-
 
 ### Set output directory
 
