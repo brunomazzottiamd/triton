@@ -75,7 +75,7 @@ BEGIN {
     printf "%02d %.2f TFLOPS\n", count, tflops
 }
 {
-    print
+    # print
 }
 END {
     if (count > 0) {
