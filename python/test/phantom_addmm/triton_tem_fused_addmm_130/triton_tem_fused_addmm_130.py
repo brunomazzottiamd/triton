@@ -97,8 +97,16 @@ class Tensors:
     def trans_b(self: "Tensors") -> "Tensors":
         return Tensors(self.input, self.a, trans_b(self.b), self.output)
 
-    def opt(self: "Tensors") -> "Tensors":
-        return self.trans_b().pad()
+    def opt(self: "Tensors", reuse_memory: bool = True) -> "Tensors":
+        new_tensors: "Tensors" = self.trans_b().pad()
+        if reuse_memory:
+            return new_tensors
+        new_input: Tensor = self.input.clone() if self.input.data_ptr() == new_tensors.input.data_ptr(
+        ) else new_tensors.input
+        new_a: Tensor = self.a.clone() if self.a.data_ptr() == new_tensors.a.data_ptr() else new_tensors.a
+        new_b: Tensor = self.b.clone() if self.b.data_ptr() == new_tensors.b.data_ptr() else new_tensors.b
+        new_output: Tensor = torch.empty_like(self.output)
+        return Tensors(new_input, new_a, new_b, new_output)
 
     def new_output(self: "Tensors") -> "Tensors":
         return Tensors(self.input, self.a, self.b, torch.empty_like(self.output))
@@ -560,6 +568,43 @@ def triton_tem_fused_addmm_130_opt(t: Tensors, use_autotune: bool = False) -> No
 # BEGIN BENCHMARK >>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 
+class RotatingTensors:
+
+    baseline_tensors: list[Tensors]
+    optimized_tensors: list[Tensors]
+    tensors_count: int
+
+    def __init__(self: "RotatingTensors", m: int, n: int, k: int, rotating_size_mb: int = 512,
+                 optimized_only: bool = False) -> None:
+        assert m > 0
+        assert n > 0
+        assert k > 0
+        assert rotating_size_mb > 0
+        tensors_size: int = 2 * (n + m * k + k * n + m * n)
+        rotating_size: int = 1024 * 1024 * rotating_size_mb
+        num_tensors: int = max(rotating_size // tensors_size, 2)
+        self.baseline_tensors = [gen_tensors_mnk(m, n, k) for _ in range(num_tensors)]
+        self.optimized_tensors = [tensors.opt(reuse_memory=False) for tensors in self.baseline_tensors]
+        if optimized_only:
+            self.baseline_tensors = []
+        self.tensors_count = 0
+
+    def next(self: "RotatingTensors", get_baseline: bool = True) -> Tensors:
+        tensors_list: list[Tensors] = self.baseline_tensors if get_baseline else self.optimized_tensors
+        assert len(tensors_list) > 0
+        tensors: Tensors = tensors_list[self.tensors_count % len(tensors_list)]
+        self.tensors_count += 1
+        return tensors
+
+    def next_baseline(self: "RotatingTensors") -> Tensors:
+        assert len(self.baseline_tensors) > 0
+        return self.next(get_baseline=True)
+
+    def next_optimized(self: "RotatingTensors") -> Tensors:
+        assert len(self.optimized_tensors) > 0
+        return self.next(get_baseline=False)
+
+
 def tflops(m: int, n: int, k: int, ms: float) -> float:
     return 2 * m * n * k * 1e-12 / (ms * 1e-3)
 
@@ -576,18 +621,18 @@ def benchmark_triton_tem_fused_addmm_130_kernel(optimized_only: bool = False) ->
             plot_name="triton_tem_fused_addmm_130_performance",
             args={},
         ))
-    def benchmark(m: int, n: int, k: int, provider: str) -> None:
-        t: Tensors = gen_tensors_mnk(m, n, k)
+    def benchmark(m: int, n: int, k: int, provider: str) -> tuple[float, float, float]:
+        t: RotatingTensors = RotatingTensors(m, n, k, optimized_only=optimized_only)
         q: list[float] = [0.5, 0.2, 0.8]
         ms: float
         min_ms: float
         max_ms: float
         if provider == "baseline":
-            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t), quantiles=q)
-        if provider == "optimized":
-            t = t.opt()
-            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130_opt(t, use_autotune=True),
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_tem_fused_addmm_130(t.next_baseline()),
                                                          quantiles=q)
+        if provider == "optimized":
+            ms, min_ms, max_ms = triton.testing.do_bench(
+                lambda: triton_tem_fused_addmm_130_opt(t.next_optimized(), use_autotune=True), quantiles=q)
             print(f"Best optimized tuning config: {triton_tem_fused_addmm_130_kernel_opt_autotune.best_config}")
         perf = lambda ms: tflops(m, n, k, ms)
         return perf(ms), perf(max_ms), perf(min_ms)
