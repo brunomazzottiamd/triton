@@ -31,6 +31,17 @@ from torch import Tensor
 import triton
 import triton.language as tl
 
+# BEGIN OPTIMIZATIONS CONTROL >>>>>>>>>>>>>>
+
+PAD_A: bool = True
+PAD_B: bool = False
+
+TRANS_B: bool = True
+
+PRE_LOAD_BIAS: tl.constexpr = True
+
+# END OPTIMIZATIONS CONTROL <<<<<<<<<<<<<<<<
+
 # BEGIN UTILITIES >>>>>>>>>>>>>>>>>>>>>>>>>>
 # Use by benchmark and correctness test.
 
@@ -139,10 +150,6 @@ def gen_tensors_ks(ks0: int, ks1: int, ks2: int) -> Tensors:
     return gen_tensors_mnk(*(shape_mnk_from_shape_ks((ks0, ks1, ks2))))
 
 
-PAD_A: bool = True
-PAD_B: bool = False
-
-
 # Pad a matrix.
 def pad(x: Tensor, padding: int, padding_mode: str) -> Tensor:
     assert padding > 0
@@ -171,9 +178,6 @@ def pad_b(b: Tensor) -> Tensor:
         return pad(b, 64, "bottom") if PAD_B else b
     else:
         return pad(b, 64, "right") if PAD_B else b
-
-
-TRANS_B: bool = True
 
 
 def trans_b(b: Tensor) -> Tensor:
@@ -414,7 +418,7 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0,  #
                                           stride_bk, stride_bn,  #
                                           stride_cm, stride_cn,  #
                                           BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,  #
-                                          GROUP_M: tl.constexpr, EVEN_K: tl.constexpr):
+                                          GROUP_M: tl.constexpr, EVEN_K: tl.constexpr, PRE_LOAD_BIAS: tl.constexpr):
     ALLOW_TF32: tl.constexpr = False
     ACC_TYPE: tl.constexpr = tl.float32
     B_PROLOGUE_CAST_TYPE: tl.constexpr = None
@@ -449,7 +453,8 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0,  #
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
 
-    tmp0 = tl.load(in_ptr0 + rn, rn < N, other=0., eviction_policy='evict_last')
+    if PRE_LOAD_BIAS:
+        tmp0 = tl.load(in_ptr0 + rn, rn < N, other=0., eviction_policy='evict_last')
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
     for k in range(K, 0, -BLOCK_K):
@@ -465,14 +470,19 @@ def triton_tem_fused_addmm_130_kernel_opt(in_ptr0, arg_A, arg_B, out_ptr0,  #
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
 
-    tmp1 = acc + tmp0[None, :]
+    if PRE_LOAD_BIAS:
+        tmp1 = acc + tmp0[None, :]
 
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     idx_m = rm[:, None]
     idx_n = rn[None, :]
     mask = (idx_m < M) & (idx_n < N)
+
     xindex = stride_cn * idx_n + stride_cm * idx_m
+    if not PRE_LOAD_BIAS:
+        tmp0 = tl.load(in_ptr0 + (tl.broadcast_to(idx_n, acc.shape)), mask, eviction_policy='evict_last').to(tl.float32)
+        tmp1 = acc + tmp0
     tl.store(out_ptr0 + (tl.broadcast_to(xindex, acc.shape)), tmp1, mask)
 
 
@@ -493,7 +503,7 @@ def triton_tem_fused_addmm_130_kernel_opt_autotune(in_ptr0, arg_A, arg_B, out_pt
                                           stride_bk, stride_bn,  #
                                           stride_cm, stride_cn,  #
                                           BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,  #
-                                          GROUP_M=GROUP_M, EVEN_K=EVEN_K)
+                                          GROUP_M=GROUP_M, EVEN_K=EVEN_K, PRE_LOAD_BIAS=PRE_LOAD_BIAS)
 
 
 @triton.jit
@@ -511,7 +521,7 @@ def triton_tem_fused_addmm_130_kernel_opt_no_autotune(in_ptr0, arg_A, arg_B, out
                                           stride_bk, stride_bn,  #
                                           stride_cm, stride_cn,  #
                                           BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,  #
-                                          GROUP_M=GROUP_M, EVEN_K=EVEN_K)
+                                          GROUP_M=GROUP_M, EVEN_K=EVEN_K, PRE_LOAD_BIAS=PRE_LOAD_BIAS)
 
 
 def triton_tem_fused_addmm_130_opt(t: Tensors, use_autotune: bool = False) -> None:
