@@ -1988,6 +1988,8 @@ def run_benchmark(custom, args):
             assert False, f"Unknown provider {provider} in flash-attention."
 
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        if mode != "bwd":
+            print(f"best config: {attn_fwd.best_config}")
         total_flops = 2 * flops_per_matmul
         if causal:
             # total_flops *= 0.5 # normally, but we have to take into account the unequal seqlen_q/k
