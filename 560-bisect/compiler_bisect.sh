@@ -2,19 +2,39 @@
 
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
-# Compile Triton:
-export PIP_ROOT_USER_ACTION=ignore
-export TRITON_BUILD_WITH_CCACHE=true
-pip uninstall --yes triton && \
-pushd "${script_dir}/../python" || exit && \
-pip install --verbose --no-build-isolation . && \
-popd || exit
+no_compilation=false
+while getopts "n" opt; do
+    case "${opt}" in
+	n)
+	    no_compilation=true
+	    ;;
+	*)
+	    echo "Usage: ${0} [-n]" >&2
+	    exit 1
+	    ;;
+    esac
+done
+
+if [ "${no_compilation}" = false ]; then
+    echo "Compiling Triton..."
+    export PIP_ROOT_USER_ACTION=ignore
+    export TRITON_BUILD_WITH_CCACHE=true
+    pip uninstall --yes triton && \
+    pushd "${script_dir}/../python" || exit && \
+    pip install --verbose --no-build-isolation . && \
+    popd || exit
+else
+    echo "Skipping Triton compilation."
+fi
 
 # Clean Triton cache:
 rm --recursive --force ~/.triton/cache
 
 # Show Git commit:
+echo 'Current branch:'
 git log -1 --pretty=format:"%cd | %h | %s" --date=short
+echo 'main branch:'
+git log main -1 --pretty=format:"%cd | %h | %s" --date=short
 
 n=3
 pushd "${script_dir}/../python/perf-kernels" || exit
