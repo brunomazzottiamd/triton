@@ -1,0 +1,28 @@
+git bisect start
+# good: [4caedc2a51f5c81f7b63212b9bcb76b430102913] [BACKEND] Support stmatrix for swizzle distributed to shared (#3877)
+git bisect good 4caedc2a51f5c81f7b63212b9bcb76b430102913
+# bad: [64aacb71fdd53ff8fec16e338a457d4909a2729a] [BACKEND] bump llvm to 2f7ade4b (#5599)
+git bisect bad 64aacb71fdd53ff8fec16e338a457d4909a2729a
+# good: [1df64d1aaf9ecd74124ccb503d5fe1016a8f92cf] [AMD] Add alignment information to maskedLoad/maskedStore (#4816)
+git bisect good 1df64d1aaf9ecd74124ccb503d5fe1016a8f92cf
+# bad: [03c63129d314bc2d112a802115e39fce3f17d2ec] [CMake] Add C as project language (#5217)
+git bisect bad 03c63129d314bc2d112a802115e39fce3f17d2ec
+# bad: [f06254083ac62ab91a44d7c9b4d9a7c41d87cc1d] [AMD] Enable scaled_dot(-, bf16) (#5029)
+git bisect bad f06254083ac62ab91a44d7c9b4d9a7c41d87cc1d
+# bad: [9e900890fcda9c017cbc731768de4c9e1044f017] [Backend] Implement `scaled_dot(mxfp4, fp8)` (#4904)
+git bisect bad 9e900890fcda9c017cbc731768de4c9e1044f017
+# bad: [53166efa2494764e11734d57de681cc4d2486981] Allow third-party backends to add submodules to `triton.language.extra` (#4503)
+git bisect bad 53166efa2494764e11734d57de681cc4d2486981
+# bad: [53166efa2494764e11734d57de681cc4d2486981] Allow third-party backends to add submodules to `triton.language.extra` (#4503)
+git bisect bad 53166efa2494764e11734d57de681cc4d2486981
+# bad: [33c0c1cc2f9b67adc2c4d32282b67ec11632b0a3] [AMD] Fix shared layout order for batch dimension in pipeline passes (#4796)
+git bisect bad 33c0c1cc2f9b67adc2c4d32282b67ec11632b0a3
+# good: [762a7d197c4ea68e6e3a7895b5343a4afe894d0d] [AMD][CanonicalizePointers] Propagate the attributes during the rewrites (#4815)
+git bisect good 762a7d197c4ea68e6e3a7895b5343a4afe894d0d
+# bad: [b24fa652a68d907806b27ca794113767a1a76901] Fix assert loc for cases where assert is in an inlined func (#4840)
+git bisect bad b24fa652a68d907806b27ca794113767a1a76901
+# good: [057a9d31e16dbc68d954c74fa98910ac4cf1a033] [PROTON] Fix build with clang-17 (#4838)
+git bisect good 057a9d31e16dbc68d954c74fa98910ac4cf1a033
+# bad: [cd1cc2d54b7a11ed726244bc8cc11bd06e1a5d87] Refactor compiler specializations to consider backend (#4734)
+git bisect bad cd1cc2d54b7a11ed726244bc8cc11bd06e1a5d87
+# first bad commit: [cd1cc2d54b7a11ed726244bc8cc11bd06e1a5d87] Refactor compiler specializations to consider backend (#4734)

@@ -1,0 +1,18 @@
+git bisect start
+# good: [9e900890fcda9c017cbc731768de4c9e1044f017] [Backend] Implement `scaled_dot(mxfp4, fp8)` (#4904)
+git bisect good 9e900890fcda9c017cbc731768de4c9e1044f017
+# bad: [f06254083ac62ab91a44d7c9b4d9a7c41d87cc1d] [AMD] Enable scaled_dot(-, bf16) (#5029)
+git bisect bad f06254083ac62ab91a44d7c9b4d9a7c41d87cc1d
+# bad: [656f60b0c7583663e86b71cd8da54b73c1d1c594] [AMD] Add fast_expf to libdevice (#4937)
+git bisect bad 656f60b0c7583663e86b71cd8da54b73c1d1c594
+# bad: [a19f32454271ff9565ab957834bdf1e5d4ddce57] Replace open-coded indirect load elimination loop (#4952)
+git bisect bad a19f32454271ff9565ab957834bdf1e5d4ddce57
+# bad: [692143cd869f2fa1501edb1db76fb452b85ac914] [AMD] Add a tt.pointer_range_32 specialization (#4910)
+git bisect bad 692143cd869f2fa1501edb1db76fb452b85ac914
+# good: [d2078949e8d34b3ed9d486fc8ddd7d30329b8f6c] [BUILD] Add instrumentation libs to `.gitignore` (#4936)
+git bisect good d2078949e8d34b3ed9d486fc8ddd7d30329b8f6c
+# good: [d1958329c9c531d33b4933e9bfcdbc4b15ab4ed0] [NFC] Add `#include <string>` into `TritonToTritonGPUPass.h` (#4943)
+git bisect good d1958329c9c531d33b4933e9bfcdbc4b15ab4ed0
+# good: [188370325395c79a4ba3de0bc47e39a19fc83224] [NFC] Make some tests platform independent (#4946)
+git bisect good 188370325395c79a4ba3de0bc47e39a19fc83224
+# first bad commit: [692143cd869f2fa1501edb1db76fb452b85ac914] [AMD] Add a tt.pointer_range_32 specialization (#4910)

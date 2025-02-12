@@ -1,0 +1,22 @@
+git bisect start
+# good: [03c63129d314bc2d112a802115e39fce3f17d2ec] [CMake] Add C as project language (#5217)
+git bisect good 03c63129d314bc2d112a802115e39fce3f17d2ec
+# bad: [64aacb71fdd53ff8fec16e338a457d4909a2729a] [BACKEND] bump llvm to 2f7ade4b (#5599)
+git bisect bad 64aacb71fdd53ff8fec16e338a457d4909a2729a
+# good: [4828693e701495362c71b15f82835bb80b65f6c0] [Layouts] Fix `invertAndCompose` when there are identity dimensions (#5468)
+git bisect good 4828693e701495362c71b15f82835bb80b65f6c0
+# bad: [5e337e015abf11741cf70340b0f068ad81e98cdb] [PROTON] Spring 2025 - Core Updates and New Features (#5508)
+git bisect bad 5e337e015abf11741cf70340b0f068ad81e98cdb
+# bad: [8180c86adca55455930185d4bbe8150c9faaf3ea] [AMD] Support dot small k dim sizes in MFMA (#5406)
+git bisect bad 8180c86adca55455930185d4bbe8150c9faaf3ea
+# good: [75a4b7b9a2ce382dc5c7f9836d0b843d21d9defe] [FRONTEND] add support for function arguments ; enforce use of `_unsafe_update_src` to modify the source-code of a JITFunction (#5505)
+git bisect good 75a4b7b9a2ce382dc5c7f9836d0b843d21d9defe
+# bad: [5524b7c7d414e10b012d5888c4fe23d8189e38cc] [FRONTEND][JIT] don't stringify tuples early when computing signatures (#5517)
+git bisect bad 5524b7c7d414e10b012d5888c4fe23d8189e38cc
+# good: [2f8fe0d6f2b0a0011c54a57c0ba192bf1f6afc00] [FRONTEND] Remove unused json parse in triton.compile (#5510)
+git bisect good 2f8fe0d6f2b0a0011c54a57c0ba192bf1f6afc00
+# bad: [67dc6270aa8905b193d72756d5d54b3dccf9e168] [FRONTEND] clean-up backend/jit interface (#5512)
+git bisect bad 67dc6270aa8905b193d72756d5d54b3dccf9e168
+# good: [4d1ec3eef217053f13c490fe9187539289cd184a] [TOOLS] Move backend template src files to `third_party/tools` folder (#5411)
+git bisect good 4d1ec3eef217053f13c490fe9187539289cd184a
+# first bad commit: [67dc6270aa8905b193d72756d5d54b3dccf9e168] [FRONTEND] clean-up backend/jit interface (#5512)

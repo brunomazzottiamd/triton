@@ -1,0 +1,24 @@
+git bisect start
+# good: [4caedc2a51f5c81f7b63212b9bcb76b430102913] [BACKEND] Support stmatrix for swizzle distributed to shared (#3877)
+git bisect good 4caedc2a51f5c81f7b63212b9bcb76b430102913
+# bad: [1df64d1aaf9ecd74124ccb503d5fe1016a8f92cf] [AMD] Add alignment information to maskedLoad/maskedStore (#4816)
+git bisect bad 1df64d1aaf9ecd74124ccb503d5fe1016a8f92cf
+# good: [7c42f6bf02c2583f73eccefb351f17b61bed1dfb] [INTERPRETER] Refactor function rewriter (#4325)
+git bisect good 7c42f6bf02c2583f73eccefb351f17b61bed1dfb
+# good: [fdc77185ef0a4efa64df4d69f08c3bce7699d8b5] [Readme] Fix command to get compile command (#4572)
+git bisect good fdc77185ef0a4efa64df4d69f08c3bce7699d8b5
+# good: [a0c1bc9c8c966158cadd603e5a20704081deaa62] [BE] Accumulator init optimization (#4680)
+git bisect good a0c1bc9c8c966158cadd603e5a20704081deaa62
+# good: [d6a11a4636b20eecb285d980441d3912ed960d23] [AMD] Add TritonAMDGPU dialect scaffolding (#4685)
+git bisect good d6a11a4636b20eecb285d980441d3912ed960d23
+# good: [694719a08d9406a1ea5e81a24d29877f723caf4d] [backend] Fix improper mma->dot shortcut when `warpsPerCTA[1] > 1` (#4803)
+git bisect good 694719a08d9406a1ea5e81a24d29877f723caf4d
+# bad: [c2107648730402f29cded0665a1dc347d3983e91] [SWP] split loads to handle incompatible shared encoding (#4784)
+git bisect bad c2107648730402f29cded0665a1dc347d3983e91
+# good: [a70d5856ff2e8e15bf259c6a0bcbff3061fc15e9] [AMD] Turn stream pipeline v2 as the default (#4665)
+git bisect good a70d5856ff2e8e15bf259c6a0bcbff3061fc15e9
+# bad: [184fb53b1a573a802e7d4b6a8bab285c44102965] [AUTOTUNER] Fix issue in autotuner which may use the wrong value as the key of config cache. (#4808)
+git bisect bad 184fb53b1a573a802e7d4b6a8bab285c44102965
+# good: [1b0f9ea7f1f6e9961251d3a6ad97fd72521a59e5] [Backend] Fix device assert inside reduction/scan region (#4811)
+git bisect good 1b0f9ea7f1f6e9961251d3a6ad97fd72521a59e5
+# first bad commit: [184fb53b1a573a802e7d4b6a8bab285c44102965] [AUTOTUNER] Fix issue in autotuner which may use the wrong value as the key of config cache. (#4808)
