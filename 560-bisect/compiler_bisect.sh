@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
+script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
+
 # Compile Triton:
 export PIP_ROOT_USER_ACTION=ignore
 export TRITON_BUILD_WITH_CCACHE=true
 pip uninstall --yes triton && \
-pushd /triton_dev/triton/python || exit && \
+pushd "${script_dir}/../python" || exit && \
 pip install --verbose --no-build-isolation . && \
 popd || exit
 
@@ -14,10 +16,11 @@ rm --recursive --force ~/.triton/cache
 # Show Git commit:
 git log -1 --pretty=format:"%cd | %h | %s" --date=short
 
-# Benchmark non-causal:
-echo 'Non-causal:'
-pushd /triton_dev/triton/perf-kernels || exit
 n=3
+pushd "${script_dir}/../python/perf-kernels" || exit
+
+# Benchmark non-causal:
+echo 'Non-causal benchmark:'
 for ((i=1; i <= n; i++)); do
     python flash-attention.py \
 	   -b 1 -hq 32 -hk 8 -sq 1024 -sk 1024 -d 128
@@ -38,12 +41,9 @@ END {
         print "No matching data found."
 }
 '
-popd || exit
 
 # Benchmark causal:
-echo 'Causal:'
-pushd /triton_dev/triton/perf-kernels || exit
-n=3
+echo 'Causal benchmark:'
 for ((i=1; i <= n; i++)); do
     python flash-attention.py \
 	   -b 1 -hq 32 -hk 8 -sq 1024 -sk 1024 -d 128 -causal
@@ -64,8 +64,8 @@ END {
         print "No matching data found."
 }
 '
-popd || exit
-
 
 # Clean benchmark files:
 rm --recursive --force ./*.csv ./*.png ./*.html
+
+popd || exit
