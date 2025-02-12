@@ -2049,6 +2049,7 @@ def parse_args():
     parser.add_argument(
         "-persistent", nargs='?', const='fixed', choices=['fixed', 'dynamic'], default=None,
         help="Enable persistent kernels. Use '-persistent dynamic' for dynamic scheduling of the tiles.")
+    parser.add_argument("-no_bench", action="store_true", default=False)
     return parser.parse_args()
 
 
@@ -2074,7 +2075,19 @@ def main():
     assert args.dtype in arg_to_torch_dtype, \
            "Only fp16, bf16 and f32 types currently supported."
 
-    run_benchmark(custom_config, args)
+    run_bench: bool = not args.no_bench
+    if run_bench:
+        run_benchmark(custom_config, args)
+    else:
+        # standalone kernel execution
+        q, k, v, input_metadata = input_helper(args.b, args.hq, args.hk, args.sq, args.sk, args.d,
+                                               arg_to_torch_dtype[args.dtype], args.layout)
+        o = torch.empty_like(q)
+        if args.causal:
+            input_metadata.need_causal()
+        input_metadata.set_persistent(args.persistent)
+        fn = lambda: attention(q, k, v, o, input_metadata)
+        fn()
 
 
 if __name__ == '__main__':
