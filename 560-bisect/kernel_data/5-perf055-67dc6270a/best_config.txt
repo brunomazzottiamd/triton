@@ -1,0 +1,9 @@
+Non-causal:
+BLOCK_M: 128, BLOCK_N: 128, waves_per_eu: 2, PRE_LOAD_V: False, GRID_CU_MULTIP: 2, num_warps: 4, num_ctas: 1, num_stages: 1, maxnreg: None
+
+Causal:
+BLOCK_M: 128, BLOCK_N: 64, waves_per_eu: 1, PRE_LOAD_V: False, GRID_CU_MULTIP: 2, num_warps: 4, num_ctas: 1, num_stages: 1, maxnreg: None
+
+IMPORTANT NOTICE:
+Heavy GPU usage at the time of data collection.
+Repeat experiment if possible.
