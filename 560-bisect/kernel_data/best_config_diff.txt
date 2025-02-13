@@ -1,0 +1,14 @@
+Non-causal:
+100% BLOCK_N:  64, waves_per_eu: 2
+ 90% BLOCK_N:  64, waves_per_eu: 1 (2/3)
+     BLOCK_N:  64, waves_per_eu: 2 (1/3)
+ 75% BLOCK_N:  64, waves_per_eu: 2
+ 60% BLOCK_N: 128, waves_per_eu: 2
+ 55% BLOCK_N:  64, waves_per_eu: 2
+
+Causal:
+100% BLOCK_N:  32, waves_per_eu: 2
+ 90% BLOCK_N:  32, waves_per_eu: 2
+ 75% BLOCK_N:  32, waves_per_eu: 2
+ 60% BLOCK_N:  64, waves_per_eu: 1
+ 55% BLOCK_N:  32, waves_per_eu: 2

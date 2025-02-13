@@ -425,11 +425,11 @@ def get_autotune_configs():
 autotune_configs, autotune_keys = get_autotune_configs()
 
 
-@triton.autotune(
-    configs=autotune_configs,
-    key=autotune_keys,
-    use_cuda_graph=True,
-)
+# @triton.autotune(
+#     configs=autotune_configs,
+#     key=autotune_keys,
+#     use_cuda_graph=True,
+# )
 @triton.jit
 def attn_fwd(Q, K, V, bias, SM_SCALE: tl.constexpr, L, Out, stride_qz, stride_qh, stride_qm, stride_qk, stride_kz,
              stride_kh, stride_kn, stride_kk, stride_vz, stride_vh, stride_vk, stride_vn, stride_oz, stride_oh,
@@ -1119,19 +1119,23 @@ class _attention(torch.autograd.Function):
 
         atomic_counter = torch.zeros([1], device=q.device, dtype=torch.int32)
 
-        attn_fwd[grid](q, k, v, metadata.bias, metadata.sm_scale, M, o, *q_strides, *k_strides, *v_strides, *o_strides,
-                       *bias_strides, *alibi_strides, q_descale, k_descale, p_scale, p_descale, v_descale,
-                       metadata.cu_seqlens_q, metadata.cu_seqlens_k, dropout_p=metadata.dropout_p,
-                       philox_seed=philox_seed, philox_offset_base=philox_offset, encoded_softmax=encoded_softmax,
-                       alibi_slopes=metadata.alibi_slopes, HQ=nheads_q, HK=nheads_k, ACTUAL_BLOCK_DMODEL=head_size,
-                       MAX_SEQLENS_Q=metadata.max_seqlens_q, MAX_SEQLENS_K=metadata.max_seqlens_k,
-                       IS_CAUSAL=metadata.causal, VARLEN=metadata.varlen, BLOCK_DMODEL=padded_d_model,
-                       USE_BIAS=False if metadata.bias is None else True,
-                       USE_ALIBI=False if metadata.alibi_slopes is None else True, ENABLE_DROPOUT=metadata.dropout_p
-                       > 0.0, RETURN_ENCODED_SOFTMAX=metadata.return_encoded_softmax, INT8=metadata.int8,
-                       USE_P_SCALE=metadata.int8 and metadata.use_p_scale, INT8_KV=metadata.int8 and metadata.int8_kv,
-                       PERSISTENT=metadata.persistent is not None, PERSISTENT_DYNAMIC=metadata.persistent == "dynamic",
-                       NUM_CU=NUM_CU, atomic_counter=atomic_counter, B=batch)
+        attn_fwd[grid](
+            q, k, v, metadata.bias, metadata.sm_scale, M, o, *q_strides, *k_strides, *v_strides, *o_strides,
+            *bias_strides, *alibi_strides, q_descale, k_descale, p_scale, p_descale, v_descale, metadata.cu_seqlens_q,
+            metadata.cu_seqlens_k, dropout_p=metadata.dropout_p, philox_seed=philox_seed,
+            philox_offset_base=philox_offset, encoded_softmax=encoded_softmax, alibi_slopes=metadata.alibi_slopes,
+            HQ=nheads_q, HK=nheads_k, ACTUAL_BLOCK_DMODEL=head_size, MAX_SEQLENS_Q=metadata.max_seqlens_q,
+            MAX_SEQLENS_K=metadata.max_seqlens_k, IS_CAUSAL=metadata.causal, VARLEN=metadata.varlen,
+            BLOCK_DMODEL=padded_d_model, USE_BIAS=False if metadata.bias is None else True,
+            USE_ALIBI=False if metadata.alibi_slopes is None else True, ENABLE_DROPOUT=metadata.dropout_p > 0.0,
+            RETURN_ENCODED_SOFTMAX=metadata.return_encoded_softmax, INT8=metadata.int8, USE_P_SCALE=metadata.int8
+            and metadata.use_p_scale, INT8_KV=metadata.int8 and metadata.int8_kv, PERSISTENT=metadata.persistent
+            is not None, PERSISTENT_DYNAMIC=metadata.persistent == "dynamic", NUM_CU=NUM_CU,
+            atomic_counter=atomic_counter, B=batch, num_warps=4, num_ctas=1, num_stages=1, PRE_LOAD_V=False,
+            GRID_CU_MULTIP=2, BLOCK_M=128, BLOCK_N=32 if metadata.causal else 64,
+            # BLOCK_N=64 if metadata.causal else 128,
+            waves_per_eu=2,  # 1
+        )
 
         ctx.save_for_backward(q, k, v, o, M)
         ctx.grid = grid
@@ -1144,7 +1148,7 @@ class _attention(torch.autograd.Function):
         ctx.philox_offset = philox_offset
         ctx.encoded_softmax = encoded_softmax
         ctx.return_encoded_softmax = metadata.return_encoded_softmax
-        return o, encoded_softmax, attn_fwd.best_config
+        return o, encoded_softmax, None  # attn_fwd.best_config
 
     @staticmethod
     def backward(ctx, do, _):
@@ -1988,8 +1992,8 @@ def run_benchmark(custom, args):
             assert False, f"Unknown provider {provider} in flash-attention."
 
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-        if mode != "bwd":
-            print(f"best config: {attn_fwd.best_config}")
+        # if mode != "bwd":
+        #     print(f"best config: {attn_fwd.best_config}")
         total_flops = 2 * flops_per_matmul
         if causal:
             # total_flops *= 0.5 # normally, but we have to take into account the unequal seqlen_q/k
