@@ -62,6 +62,11 @@ END {
 }
 '
 
+# Uncomment this block to skip causal benchmark:
+# rm --recursive --force ./*.csv ./*.png ./*.html
+# popd || exit
+# exit
+
 # Benchmark causal:
 echo 'Causal benchmark:'
 for ((i=1; i <= n; i++)); do

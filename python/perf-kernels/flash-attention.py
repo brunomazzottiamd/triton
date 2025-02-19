@@ -1131,8 +1131,11 @@ class _attention(torch.autograd.Function):
             RETURN_ENCODED_SOFTMAX=metadata.return_encoded_softmax, INT8=metadata.int8, USE_P_SCALE=metadata.int8
             and metadata.use_p_scale, INT8_KV=metadata.int8 and metadata.int8_kv, PERSISTENT=metadata.persistent
             is not None, PERSISTENT_DYNAMIC=metadata.persistent == "dynamic", NUM_CU=NUM_CU,
-            atomic_counter=atomic_counter, B=batch, num_warps=4, num_ctas=1, num_stages=1, PRE_LOAD_V=False,
-            GRID_CU_MULTIP=2, BLOCK_M=128, BLOCK_N=32 if metadata.causal else 64,
+            atomic_counter=atomic_counter, B=batch,
+            # Common arguments:
+            num_warps=4, num_ctas=1, num_stages=1, PRE_LOAD_V=False, GRID_CU_MULTIP=2, BLOCK_M=128,
+            # BLOCK_N changes from non-causal to causal:
+            BLOCK_N=32 if metadata.causal else 64,
             # BLOCK_N=64 if metadata.causal else 128,
             waves_per_eu=2,  # 1
         )
