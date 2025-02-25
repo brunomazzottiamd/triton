@@ -631,12 +631,13 @@ def parse_args():
     parser.add_argument('-Ns', "--N_step", default="1024", type=int)
     parser.add_argument('-Ne', "--N_end", default="32768", type=int)
 
-    parser.add_argument('-d', "--dtype", default="fp16")
-    parser.add_argument('-nb', "--no_benchmark", default=False, type=bool)
+    parser.add_argument('-d', "--dtype", type=str, choices=list(arg_to_torch_dtype.keys()), default="fp16")
+    parser.add_argument('-nb', "--no_benchmark", action="store_true", default=False)
     parser.add_argument("-v", action='store_true', default=False, help="Print out the best tuning config")
     parser.add_argument("--mode", type=str, choices=["fwd", "bwd"], default="fwd",
                         help="Benchmark mode: forward only, backward only, or both.")
-    parser.add_argument("--dg_atomic", default=False, type=bool, help="Use atomic ops to compute dg in bwd kernel.")
+    parser.add_argument("--dg_atomic", action="store_true", default=False,
+                        help="Use atomic ops to compute dg in bwd kernel.")
 
     return parser.parse_args()
 
@@ -645,22 +646,23 @@ def main():
     args = parse_args()
     global verbose
     if args.no_benchmark:
-        x = torch.randn(args.M_start, args.N_start, device='cuda', dtype=args.dtype)
+        dtype = arg_to_torch_dtype[args.dtype]
+        x = torch.randn(args.M_start, args.N_start, device='cuda', dtype=dtype)
         y = torch.zeros_like(x, device='cuda')
         rsigma = torch.empty((args.M_start, ), device='cuda', dtype=torch.float32)
-        dx = torch.empty(args.M_start, args.N_start, device='cuda', dtype=args.dtype, requires_grad=False)
+        dx = torch.empty(args.M_start, args.N_start, device='cuda', dtype=dtype, requires_grad=False)
         if args.dg_atomic:
             dg = torch.zeros((1, args.N_start), device='cuda', dtype=torch.float32, requires_grad=False)
             dg_tmp = None
         else:
-            dg = torch.empty((1, args.N_start), device='cuda', dtype=args.dtype, requires_grad=False)
+            dg = torch.empty((1, args.N_start), device='cuda', dtype=dtype, requires_grad=False)
             dg_tmp = torch.zeros(args.M_start, args.N_start, device='cuda', dtype=torch.float32, requires_grad=False)
         n_rows, n_cols = x.shape
         MAX_FUSED_SIZE = 65536 // x.element_size()
         blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
         USE_BLOCKED = n_cols > blk_size
         NUM_PRGMS = min(n_rows, get_num_sms())
-        g = torch.ones((1, args.N_start), device='cuda', dtype=args.dtype)
+        g = torch.ones((1, args.N_start), device='cuda', dtype=dtype)
         ZERO_CENTERED_GAMMA = True
         rmsnorm(x, y, g, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
         # TODO: check if mode is bwd and run bwd kernel.
