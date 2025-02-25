@@ -156,8 +156,6 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
             row_input_ptr = input_ptr + row_idx * input_row_stride
             row_grad_output_ptr = grad_output_ptr + row_idx * output_row_stride
             row_dx_ptr = dx_ptr + row_idx * input_row_stride
-            if not DG_ATOMIC:
-                row_dg_ptr = dg_ptr + row_idx * input_row_stride
 
             # Compute gradients sum of all colums for each row
             n_cols_blks = tl.cdiv(n_cols, BLOCK_SIZE) - 1
@@ -220,10 +218,10 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
 
                 dg = grad_output * x * norm_factor
                 dg = dg.to(tl.float32)
-                if not DG_ATOMIC:
-                    tl.store(row_dg_ptr + cols, dg)
-                else:
+                if DG_ATOMIC:
                     tl.atomic_add(dg_ptr + cols, dg)
+                else:
+                    tl.store(dg_ptr + row_idx * input_row_stride + cols, dg)
 
             # Handle remainder
             cols = n_cols_blks * BLOCK_SIZE + col_offsets
@@ -245,10 +243,10 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
 
             dg = grad_output * x * norm_factor
             dg = dg.to(tl.float32)
-            if not DG_ATOMIC:
-                tl.store(row_dg_ptr + cols, dg, mask=mask)
-            else:
+            if DG_ATOMIC:
                 tl.atomic_add(dg_ptr + cols, dg, mask=mask)
+            else:
+                tl.store(dg_ptr + row_idx * input_row_stride + cols, dg, mask=mask)
 
     else:
         mask = col_offsets < n_cols
@@ -276,10 +274,10 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
 
             dg = grad_output * x * norm_factor
             dg = dg.to(tl.float32)
-            if not DG_ATOMIC:
-                tl.store(dg_ptr + row_idx * input_row_stride + col_offsets, dg, mask=mask)
-            else:
+            if DG_ATOMIC:
                 tl.atomic_add(dg_ptr + col_offsets, dg, mask=mask)
+            else:
+                tl.store(dg_ptr + row_idx * input_row_stride + col_offsets, dg, mask=mask)
 
 
 @triton.jit
