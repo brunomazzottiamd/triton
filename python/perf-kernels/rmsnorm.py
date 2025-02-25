@@ -221,8 +221,7 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
                     tl.store(dg_ptr + row_idx * input_row_stride + blk_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE),
                              dg.to(tl.float32))
                 else:
-                    tl.atomic_add(dg_ptr + blk_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE),
-                                  tl.sum(dg.to(tl.float32), axis=0))
+                    tl.atomic_add(dg_ptr + blk_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE), dg.to(tl.float32))
 
             # Handle remainder
             cols = n_cols_blks * BLOCK_SIZE + col_offsets
@@ -247,8 +246,7 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
                 tl.store(dg_ptr + row_idx * input_row_stride + n_cols_blks * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE),
                          dg.to(tl.float32), mask=n_cols_blks * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE) < n_cols)
             else:
-                tl.atomic_add(dg_ptr + n_cols_blks * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE),
-                              tl.sum(dg.to(tl.float32), axis=0),
+                tl.atomic_add(dg_ptr + n_cols_blks * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE), dg.to(tl.float32),
                               mask=n_cols_blks * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE) < n_cols)
 
     else:
@@ -280,8 +278,8 @@ def rms_bwd_kernel(grad_output_ptr, input_ptr, g_ptr, rsigma_ptr, dx_ptr, dg_ptr
                 tl.store(dg_ptr + row_idx * input_row_stride + tl.arange(0, BLOCK_SIZE), dg.to(tl.float32),
                          mask=tl.arange(0, BLOCK_SIZE) < n_cols)
             else:
-                tl.atomic_add(dg_ptr + tl.arange(0, BLOCK_SIZE), tl.sum(dg.to(tl.float32), axis=0),
-                              mask=tl.arange(0, BLOCK_SIZE) < n_cols)
+                tl.atomic_add(dg_ptr + tl.arange(0, BLOCK_SIZE), dg.to(tl.float32), mask=tl.arange(0, BLOCK_SIZE)
+                              < n_cols)
 
 
 @triton.jit
