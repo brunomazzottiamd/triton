@@ -451,7 +451,7 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
     # Backpropagate through PyTorch
     y_ref.backward(grad_output)
     grad_x_ref = x_ref.grad.to(out_dtype)
-    # grad_g_ref = g_ref.grad.to(out_dtype)
+    grad_g_ref = g_ref.grad.to(out_dtype)
 
     # 2) Triton backward
     x_triton = x.clone().detach().requires_grad_()
@@ -461,7 +461,7 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
     rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
 
     dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
-    dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
+    dg_b = torch.zeros((1, N), device=x_triton.device, dtype=torch.float32, requires_grad=False)
     dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
 
     # Run Triton forward pass to build the graph for backward.
@@ -469,7 +469,7 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
                        ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
     y_triton.backward(grad_output, retain_graph=True)
     grad_x_triton = x_triton.grad.to(out_dtype)
-    # grad_g_triton = g_triton.grad.to(out_dtype)
+    grad_g_triton = g_triton.grad.to(out_dtype)
 
     # Compare backward outputs (grad_x and grad_g)
     err_x = (grad_x_triton - grad_x_ref).abs().max().item()
@@ -477,11 +477,10 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
     f"Triton dx mismatch (max error: {err_x:.4e})\n\n"
     f"Triton grad x:\n{grad_x_triton}\n\nPyTorch grad_x:\n{grad_x_ref}"
 
-    # Assertion on dg is disabled!
-    # err_g = (grad_g_triton - grad_g_ref).abs().max().item()
-    # assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
-    # f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
-    # f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
+    err_g = (grad_g_triton - grad_g_ref).abs().max().item()
+    assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
+    f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
+    f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
 
 
 #Benchmark
