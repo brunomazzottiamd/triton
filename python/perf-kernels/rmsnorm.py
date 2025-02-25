@@ -305,7 +305,7 @@ class RMSNorm(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
-                NUM_PRGMS, DG_ATOMIC=True, epsilon=1e-6):
+                NUM_PRGMS, epsilon=1e-6):
         # heuristics for number of warps
         #    num_warps = min(max(blk_size // 256, 1), 8)
         num_warps = 8
@@ -321,7 +321,6 @@ class RMSNorm(torch.autograd.Function):
         ctx.USE_BLOCKED = USE_BLOCKED
         ctx.NUM_PRGMS = NUM_PRGMS
         ctx.num_warps = num_warps
-        ctx.DG_ATOMIC = DG_ATOMIC
 
         ctx.dx = dx
         ctx.dg_tmp = dg_tmp
@@ -341,25 +340,20 @@ class RMSNorm(torch.autograd.Function):
         blk_size = ctx.blk_size
         USE_BLOCKED = ctx.USE_BLOCKED
         NUM_PRGMS = ctx.NUM_PRGMS
-        DG_ATOMIC = ctx.DG_ATOMIC
+        DG_ATOMIC = dg_tmp is None
+
+        grid_bwd = lambda meta: (NUM_PRGMS, )
+        rms_bwd_kernel[grid_bwd](grad_output, x, g, rsigma, dx, dg if DG_ATOMIC else dg_tmp, x.stride(0),
+                                 grad_output.stride(0), n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
+                                 NUM_PRGMS, num_warps=ctx.num_warps, DG_ATOMIC=DG_ATOMIC)
 
         if not DG_ATOMIC:
-            grid_bwd = lambda meta: (NUM_PRGMS, )
-            rms_bwd_kernel[grid_bwd](grad_output, x, g, rsigma, dx, dg_tmp, x.stride(0), grad_output.stride(0), n_rows,
-                                     n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS,
-                                     num_warps=ctx.num_warps, DG_ATOMIC=False)
-
             # grid_reduce = lambda meta: (triton.cdiv(n_cols, blk_size), )
             grid_reduce = lambda meta: [triton.cdiv(n_cols, meta['BLOCK_SIZE_N'])]
             _rmsnorm_bwd_dg_reduce[grid_reduce](dg_tmp, dg, dg_tmp.stride(0), n_rows, n_cols, BLOCK_SIZE_M=128,
                                                 BLOCK_SIZE_N=64)
-        else:
-            grid_bwd = lambda meta: (NUM_PRGMS, )
-            rms_bwd_kernel[grid_bwd](grad_output, x, g, rsigma, dx, dg, x.stride(0), grad_output.stride(0), n_rows,
-                                     n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS,
-                                     num_warps=ctx.num_warps, DG_ATOMIC=True)
 
-        return dx, dg, None, None, None, None, None, None, None, None, None, None, None, None
+        return dx, dg, None, None, None, None, None, None, None, None, None, None, None
 
 
 rmsnorm = RMSNorm.apply
@@ -387,6 +381,7 @@ arg_to_torch_dtype = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': tor
 @pytest.mark.parametrize("in_dtype_str", ["fp16", "bf16"])
 @pytest.mark.parametrize("out_dtype_str", ["fp16", "bf16"])
 @pytest.mark.parametrize('ZERO_CENTERED_GAMMA', [True, False])
+@pytest.mark.parametrize('DG_ATOMIC', [True, False])
 # yapf: disable
 @pytest.mark.parametrize('M, N', [
     (1, 4),
@@ -399,7 +394,7 @@ arg_to_torch_dtype = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': tor
     (4096, 5120),  # shape suggested by Ye
 ])
 # yapf: enable
-def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
+def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_str):
     in_dtype = arg_to_torch_dtype[in_dtype_str]
     out_dtype = arg_to_torch_dtype[out_dtype_str]
     torch.manual_seed(0)
@@ -410,8 +405,12 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
     rsigma = torch.empty((M, ), device=x.device, dtype=torch.float32)
 
     dx = torch.empty_like(x, dtype=in_dtype, requires_grad=False)
-    dg = torch.zeros((1, N), device='cuda', dtype=torch.float32, requires_grad=False)
-    dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
+    if DG_ATOMIC:
+        dg = torch.zeros((1, N), device='cuda', dtype=torch.float32, requires_grad=False)
+        dg_tmp = None
+    else:
+        dg = torch.empty_like(g, dtype=in_dtype, requires_grad=False)
+        dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
 
     n_rows, n_cols = x.shape
     MAX_FUSED_SIZE = 65536 // x.element_size()
@@ -459,8 +458,12 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str):
     rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
 
     dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
-    dg_b = torch.zeros((1, N), device=x_triton.device, dtype=torch.float32, requires_grad=False)
-    dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
+    if DG_ATOMIC:
+        dg_b = torch.zeros((1, N), device=x_triton.device, dtype=torch.float32, requires_grad=False)
+        dg_tmp_b = None
+    else:
+        dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
+        dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
 
     # Run Triton forward pass to build the graph for backward.
     y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
@@ -542,13 +545,18 @@ def run_benchmark(args):
     @triton.testing.perf_report(config)
     def benchmark(M, N, provider, model=None):
         mode = args.mode
+        DG_ATOMIC = args.dg_atomic
 
         x = torch.randn(M, N, device='cuda', dtype=dtype)
         y = torch.zeros_like(x, device='cuda')
         rsigma = torch.empty((M, ), device='cuda', dtype=torch.float32)
         dx = torch.empty(M, N, device='cuda', dtype=dtype, requires_grad=False)
-        dg = torch.zeros((1, N), device='cuda', dtype=torch.float32, requires_grad=False)
-        dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
+        if DG_ATOMIC:
+            dg = torch.zeros((1, N), device='cuda', dtype=torch.float32, requires_grad=False)
+            dg_tmp = None
+        else:
+            dg = dg = torch.empty((1, N), device='cuda', dtype=dtype, requires_grad=False)
+            dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
         n_rows, n_cols = x.shape
         #        MAX_FUSED_SIZE = 65536 // x.element_size()
         #        blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
@@ -577,8 +585,12 @@ def run_benchmark(args):
             y_ = torch.zeros_like(x_, dtype=dtype)
             rsigma_ = torch.empty((M, ), device='cuda', dtype=torch.float32)
             dx_ = torch.empty_like(x_, dtype=dtype)
-            dg_tmp_ = torch.empty_like(x_, dtype=torch.float32)
-            dg_ = torch.empty_like(g_, dtype=dtype)
+            if DG_ATOMIC:
+                dg_ = torch.zeros((1, N), device='cuda', dtype=torch.float32)
+                dg_tmp_ = None
+            else:
+                dg_ = torch.empty_like(g_, dtype=dtype)
+                dg_tmp_ = torch.empty_like(x_, dtype=torch.float32)
             grad_out = torch.randn_like(y_)
 
             y_out = rmsnorm(x_, g_, y_, rsigma_, dx_, dg_, dg_tmp_, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size,
@@ -590,7 +602,7 @@ def run_benchmark(args):
 
         global verbose
         if verbose:
-            print(f'SIZE: {N} Best tuning config: ({rms_kernel.best_config})')
+            print(f'SIZE: {N} Best forward tuning config: ({rms_kernel.best_config})')
             print(f'time: {ms}')
         gbps = lambda ms_val: 2 * x.nelement() * x.element_size() * 1e-9 / (ms_val * 1e-3)
         return gbps(ms)
@@ -626,6 +638,7 @@ def parse_args():
     parser.add_argument("-v", action='store_true', default=False, help="Print out the best tuning config")
     parser.add_argument("--mode", type=str, choices=["fwd", "bwd"], default="fwd",
                         help="Benchmark mode: forward only, backward only, or both.")
+    parser.add_argument("--dg_atomic", default=False, type=bool, help="Use atomic ops to compute dg in bwd kernel.")
 
     return parser.parse_args()
 
@@ -638,8 +651,12 @@ def main():
         y = torch.zeros_like(x, device='cuda')
         rsigma = torch.empty((args.M_start, ), device='cuda', dtype=torch.float32)
         dx = torch.empty(args.M_start, args.N_start, device='cuda', dtype=args.dtype, requires_grad=False)
-        dg = torch.zeros((1, args.N_start), device='cuda', dtype=torch.float32, requires_grad=False)
-        dg_tmp = torch.zeros(args.M_start, args.N_start, device='cuda', dtype=torch.float32, requires_grad=False)
+        if args.dg_atomic:
+            dg = torch.zeros((1, args.N_start), device='cuda', dtype=torch.float32, requires_grad=False)
+            dg_tmp = None
+        else:
+            dg = torch.empty((1, args.N_start), device='cuda', dtype=args.dtype, requires_grad=False)
+            dg_tmp = torch.zeros(args.M_start, args.N_start, device='cuda', dtype=torch.float32, requires_grad=False)
         n_rows, n_cols = x.shape
         MAX_FUSED_SIZE = 65536 // x.element_size()
         blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
@@ -648,6 +665,7 @@ def main():
         g = torch.ones((1, args.N_start), device='cuda', dtype=args.dtype)
         ZERO_CENTERED_GAMMA = True
         rmsnorm(x, y, g, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
+        # TODO: check if mode is bwd and run bwd kernel.
     else:
         verbose = args.v
         run_benchmark(args)
