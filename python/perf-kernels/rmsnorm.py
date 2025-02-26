@@ -679,27 +679,9 @@ def main():
         y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
                            NUM_PRGMS)
 
-        grad_output = torch.randn_like(y_triton)
-
-        # Triton backward
-        x_triton = x.clone().detach().requires_grad_()
-        g_triton = g.clone().detach().requires_grad_()
-
-        y_triton_buf = torch.empty_like(x_triton, dtype=out_dtype)
-        rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
-
-        dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
-        if DG_ATOMIC:
-            dg_b = torch.zeros((1, N), device=x_triton.device, dtype=torch.float32, requires_grad=False)
-            dg_tmp_b = None
-        else:
-            dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
-            dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
-
-        # Run Triton forward pass to build the graph for backward.
-        y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
-                           ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
-        y_triton.backward(grad_output, retain_graph=True)
+        if args.mode == "bwd":
+            grad_output = torch.randn_like(y_triton)
+            y_triton.backward(grad_output, retain_graph=True)
 
     else:
         verbose = args.v
