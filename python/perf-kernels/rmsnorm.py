@@ -645,27 +645,36 @@ def parse_args():
 def main():
     args = parse_args()
     global verbose
+
     if args.no_benchmark:
         dtype = arg_to_torch_dtype[args.dtype]
-        x = torch.randn(args.M_start, args.N_start, device='cuda', dtype=dtype)
-        y = torch.zeros_like(x, device='cuda')
-        rsigma = torch.empty((args.M_start, ), device='cuda', dtype=torch.float32)
-        dx = torch.empty(args.M_start, args.N_start, device='cuda', dtype=dtype, requires_grad=False)
+        M, N = args.M_start, args.N_start
+
+        x = torch.randn((M, N), device='cuda', dtype=dtype, requires_grad=True)
+        g = torch.ones((1, N), device='cuda', dtype=dtype, requires_grad=True)
+        y = torch.zeros_like(x)
+        rsigma = torch.empty((M, ), device='cuda', dtype=torch.float32)
+        dx = torch.empty_like(x)
         if args.dg_atomic:
-            dg = torch.zeros((1, args.N_start), device='cuda', dtype=torch.float32, requires_grad=False)
+            dg = torch.zeros_like(g, dtype=torch.float32)
             dg_tmp = None
         else:
-            dg = torch.empty((1, args.N_start), device='cuda', dtype=dtype, requires_grad=False)
-            dg_tmp = torch.zeros(args.M_start, args.N_start, device='cuda', dtype=torch.float32, requires_grad=False)
+            dg = torch.empty_like(g)
+            dg_tmp = torch.zeros_like(x, dtype=torch.float32)
+
         n_rows, n_cols = x.shape
-        MAX_FUSED_SIZE = 65536 // x.element_size()
-        blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
+        # MAX_FUSED_SIZE = 65536 // x.element_size()
+        # blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
+        blk_size = 1024
         USE_BLOCKED = n_cols > blk_size
         NUM_PRGMS = min(n_rows, get_num_sms())
-        g = torch.ones((1, args.N_start), device='cuda', dtype=dtype)
         ZERO_CENTERED_GAMMA = True
         rmsnorm(x, y, g, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
-        # TODO: check if mode is bwd and run bwd kernel.
+
+        if args.mode == "bwd":
+            grad_output = torch.randn_like(y)
+            y.backward(grad_output, retain_graph=True)
+
     else:
         verbose = args.v
         run_benchmark(args)
