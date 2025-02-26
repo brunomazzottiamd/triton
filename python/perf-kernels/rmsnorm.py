@@ -647,33 +647,99 @@ def main():
     global verbose
 
     if args.no_benchmark:
-        dtype = arg_to_torch_dtype[args.dtype]
+        in_dtype_str = out_dtype_str = args.dtype
         M, N = args.M_start, args.N_start
+        DG_ATOMIC = args.dg_atomic
+        ZERO_CENTERED_GAMMA = True
 
-        x = torch.randn((M, N), device='cuda', dtype=dtype, requires_grad=True)
-        g = torch.ones((1, N), device='cuda', dtype=dtype, requires_grad=True)
-        y = torch.zeros_like(x)
-        rsigma = torch.empty((M, ), device='cuda', dtype=torch.float32)
-        dx = torch.empty_like(x)
-        if args.dg_atomic:
-            dg = torch.zeros_like(g, dtype=torch.float32)
+        # Run kernel as done in test:
+        in_dtype = arg_to_torch_dtype[in_dtype_str]
+        out_dtype = arg_to_torch_dtype[out_dtype_str]
+        torch.manual_seed(0)
+
+        x = torch.randn(M, N, device='cuda', dtype=in_dtype, requires_grad=True)
+        g = torch.ones((1, N), device='cuda', dtype=in_dtype, requires_grad=True)
+        y = torch.zeros_like(x, device='cuda', dtype=out_dtype)
+        rsigma = torch.empty((M, ), device=x.device, dtype=torch.float32)
+
+        dx = torch.empty_like(x, dtype=in_dtype, requires_grad=False)
+        if DG_ATOMIC:
+            dg = torch.zeros((1, N), device='cuda', dtype=torch.float32, requires_grad=False)
             dg_tmp = None
         else:
-            dg = torch.empty_like(g)
-            dg_tmp = torch.zeros_like(x, dtype=torch.float32)
+            dg = torch.empty_like(g, dtype=in_dtype, requires_grad=False)
+            dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
 
         n_rows, n_cols = x.shape
-        # MAX_FUSED_SIZE = 65536 // x.element_size()
-        # blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
-        blk_size = 1024
+        MAX_FUSED_SIZE = 65536 // x.element_size()
+        blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
         USE_BLOCKED = n_cols > blk_size
         NUM_PRGMS = min(n_rows, get_num_sms())
-        ZERO_CENTERED_GAMMA = True
-        rmsnorm(x, y, g, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
 
-        if args.mode == "bwd":
-            grad_output = torch.randn_like(y)
-            y.backward(grad_output, retain_graph=True)
+        y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
+                           NUM_PRGMS)
+
+        y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
+
+        if out_dtype in (torch.float16, torch.bfloat16):
+            atol, rtol = 1e-3, 1e-2
+        else:
+            # float32 typically can be tighter
+            atol, rtol = 1e-5, 1e-5
+
+        assert y_triton.dtype == out_dtype, f"y_triton has dtype={y_triton.dtype}, expected {out_dtype}"
+        assert y_torch.dtype == out_dtype, f"y_torch has dtype={y_torch.dtype}, expected {out_dtype}"
+
+        assert torch.allclose(y_triton, y_torch, atol=atol, rtol=rtol), \
+            f"Mismatch in 'y' (in={in_dtype_str}, out={out_dtype_str})"
+        assert torch.allclose(rsigma, rsigma_torch, atol=atol, rtol=rtol), \
+            f"Mismatch in 'rsigma' (in={in_dtype_str}, out={out_dtype_str})"
+
+        grad_output = torch.randn_like(y_torch)
+
+        # 1) PyTorch reference backward
+        # We must clone and set requires_grad = True for backward
+        x_ref = x.clone().detach().requires_grad_()
+        g_ref = g.clone().detach().requires_grad_()
+        y_ref, rsigma_ref = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, out_dtype)
+
+        # Backpropagate through PyTorch
+        y_ref.backward(grad_output)
+        grad_x_ref = x_ref.grad.to(out_dtype)
+        grad_g_ref = g_ref.grad.to(out_dtype)
+
+        # 2) Triton backward
+        x_triton = x.clone().detach().requires_grad_()
+        g_triton = g.clone().detach().requires_grad_()
+
+        y_triton_buf = torch.empty_like(x_triton, dtype=out_dtype)
+        rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
+
+        dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
+        if DG_ATOMIC:
+            dg_b = torch.zeros((1, N), device=x_triton.device, dtype=torch.float32, requires_grad=False)
+            dg_tmp_b = None
+        else:
+            dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
+            dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
+
+        # Run Triton forward pass to build the graph for backward.
+        y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
+                           ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
+        y_triton.backward(grad_output, retain_graph=True)
+        grad_x_triton = x_triton.grad.to(out_dtype)
+        grad_g_triton = g_triton.grad.to(out_dtype)
+
+        # Compare backward outputs (grad_x and grad_g)
+        err_x = (grad_x_triton - grad_x_ref).abs().max().item()
+        assert torch.allclose(grad_x_triton, grad_x_ref, atol=atol, rtol=rtol), \
+        f"Triton dx mismatch (max error: {err_x:.4e})\n\n"
+        f"Triton grad x:\n{grad_x_triton}\n\nPyTorch grad_x:\n{grad_x_ref}"
+
+        err_g = (grad_g_triton - grad_g_ref).abs().max().item()
+        assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
+        f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
+        f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
 
     else:
         verbose = args.v
