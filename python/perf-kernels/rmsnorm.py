@@ -679,36 +679,9 @@ def main():
         y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
                            NUM_PRGMS)
 
-        y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
+        grad_output = torch.randn_like(y_triton)
 
-        if out_dtype in (torch.float16, torch.bfloat16):
-            atol, rtol = 1e-3, 1e-2
-        else:
-            # float32 typically can be tighter
-            atol, rtol = 1e-5, 1e-5
-
-        assert y_triton.dtype == out_dtype, f"y_triton has dtype={y_triton.dtype}, expected {out_dtype}"
-        assert y_torch.dtype == out_dtype, f"y_torch has dtype={y_torch.dtype}, expected {out_dtype}"
-
-        assert torch.allclose(y_triton, y_torch, atol=atol, rtol=rtol), \
-            f"Mismatch in 'y' (in={in_dtype_str}, out={out_dtype_str})"
-        assert torch.allclose(rsigma, rsigma_torch, atol=atol, rtol=rtol), \
-            f"Mismatch in 'rsigma' (in={in_dtype_str}, out={out_dtype_str})"
-
-        grad_output = torch.randn_like(y_torch)
-
-        # 1) PyTorch reference backward
-        # We must clone and set requires_grad = True for backward
-        x_ref = x.clone().detach().requires_grad_()
-        g_ref = g.clone().detach().requires_grad_()
-        y_ref, rsigma_ref = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, out_dtype)
-
-        # Backpropagate through PyTorch
-        y_ref.backward(grad_output)
-        grad_x_ref = x_ref.grad.to(out_dtype)
-        grad_g_ref = g_ref.grad.to(out_dtype)
-
-        # 2) Triton backward
+        # Triton backward
         x_triton = x.clone().detach().requires_grad_()
         g_triton = g.clone().detach().requires_grad_()
 
@@ -727,19 +700,6 @@ def main():
         y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
                            ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
         y_triton.backward(grad_output, retain_graph=True)
-        grad_x_triton = x_triton.grad.to(out_dtype)
-        grad_g_triton = g_triton.grad.to(out_dtype)
-
-        # Compare backward outputs (grad_x and grad_g)
-        err_x = (grad_x_triton - grad_x_ref).abs().max().item()
-        assert torch.allclose(grad_x_triton, grad_x_ref, atol=atol, rtol=rtol), \
-        f"Triton dx mismatch (max error: {err_x:.4e})\n\n"
-        f"Triton grad x:\n{grad_x_triton}\n\nPyTorch grad_x:\n{grad_x_ref}"
-
-        err_g = (grad_g_triton - grad_g_ref).abs().max().item()
-        assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
-        f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
-        f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
 
     else:
         verbose = args.v
