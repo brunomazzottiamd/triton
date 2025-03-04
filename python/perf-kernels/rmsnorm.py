@@ -493,8 +493,6 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_s
 # Run with:
 # > pytest rmsnorm.py::test_rmsnorm_fwd_bwd_triton
 
-import os
-
 
 def te_rmsnorm_fwd_fp8_noalloc_triton(input, weight, eps, ln_out, otype, zero_centered_gamma):
     M, N = input.shape
@@ -600,38 +598,57 @@ def test_rmsnorm_fwd_bwd_triton(M, N, in_dtype, out_dtype, zero_centered_gamma):
     dz_tensor = dz_tensor.to(in_dtype)
 
     epsilon = 1e-5
-    # run the triton path
+
+    # run the triton fwd path
     # in hipfied kernel cpp test, z is of out_type
     ln_out_triton = torch.empty(M, N, dtype=out_dtype, device='cuda')
     ln_out_triton, rsigma_triton = te_rmsnorm_fwd_fp8_noalloc_triton(input_tensor, gamma_tensor, epsilon, ln_out_triton,
                                                                      out_dtype, zero_centered_gamma)
 
-    # run the reference hipified kernel path
-    # dummy fp8 meta
-    scale_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
-    amax_tensor = torch.zeros(0, dtype=torch.float32, device='cuda')
-    scale_inv_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
+    # run the reference fwd torch path
+    input_tensor_torch = input_tensor.clone().detach().requires_grad_()
+    gamma_tensor_torch = gamma_tensor.clone().detach().requires_grad_()
+    ln_out_torch, rsigma_torch = torch_rmsnorm_fwd(input_tensor_torch, gamma_tensor_torch, zero_centered_gamma,
+                                                   out_dtype, epsilon=epsilon)
 
-    fwd_ln_sm_margin = int(os.getenv("NVTE_FWD_LAYERNORM_SM_MARGIN", "0"))
-    ln_out_hipified = torch.empty(M, N, dtype=out_dtype, device='cuda')
+    # run the reference fwd hipified kernel path
+    # dummy fp8 meta
+    # scale_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
+    # amax_tensor = torch.zeros(0, dtype=torch.float32, device='cuda')
+    # scale_inv_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
+    # fwd_ln_sm_margin = int(os.getenv("NVTE_FWD_LAYERNORM_SM_MARGIN", "0"))
+    # ln_out_hipified = torch.empty(M, N, dtype=out_dtype, device='cuda')
     # ln_out_hipified, rsigma_hipified = tex.rmsnorm_fwd_fp8_noalloc(input_tensor, gamma_tensor, epsilon, scale_tensor,
     #                                                                ln_out_hipified, amax_tensor, scale_inv_tensor,
     #                                                                get_te_dtype(out_dtype), fwd_ln_sm_margin,
     #                                                                zero_centered_gamma)
-    atol, rtol = get_tolerances(out_dtype)
-    # assert torch.allclose(ln_out_triton, ln_out_hipified, atol=1e-8, rtol=rtol), 'ln_out does not match'
-    # rsigma is of type fp32
-    # assert torch.allclose(rsigma_triton, rsigma_hipified, atol=1e-6, rtol=5e-5), 'rsigma does not match'
 
+    atol, rtol = get_tolerances(out_dtype)
+    # assert torch.allclose(ln_out_triton, ln_out_hipified, atol=1e-8, rtol=rtol), 'ln_out does not match hipified'
+    assert torch.allclose(ln_out_triton, ln_out_torch, atol=1e-8, rtol=rtol), 'ln_out does not match torch'
+    # rsigma is of type fp32
+    # assert torch.allclose(rsigma_triton, rsigma_hipified, atol=1e-6, rtol=5e-5), 'rsigma does not match hipified'
+    assert torch.allclose(rsigma_triton, rsigma_torch, atol=1e-6, rtol=5e-5), 'rsigma does not match torch'
+
+    # run the triton bwd path
     dx_triton, dgamma_triton = te_rmsnorm_bwd_triton(dz_tensor, input_tensor, rsigma_triton, gamma_tensor,
                                                      zero_centered_gamma)
+
+    # run the reference bwd torch path
+    ln_out_torch.backward(dz_tensor)
+    dx_torch = input_tensor_torch.grad.to(out_dtype)
+    dgamma_torch = gamma_tensor_torch.grad.to(out_dtype)
+
+    # run the reference bwd hipified kernel path
     # dx_hipified, dgamma_hipified = tex.rmsnorm_bwd(dz_tensor, input_tensor, rsigma_hipified, gamma_tensor,
     #                                                fwd_ln_sm_margin, zero_centered_gamma)
 
     atol_bwd = 5e-6
     rtol_bwd = 1e-4
-    # torch.testing.assert_close(dx_triton, dx_hipified, atol=atol_bwd, rtol=rtol_bwd)
-    # torch.testing.assert_close(dgamma_triton, dgamma_hipified, atol=atol_bwd, rtol=rtol_bwd)
+    # torch.testing.assert_close(dx_triton, dx_hipified, atol=atol_bwd, rtol=rtol_bwd), 'dx does not match hipified'
+    torch.testing.assert_close(dx_triton, dx_torch, atol=atol_bwd, rtol=rtol_bwd), 'dx does not match torch'
+    # torch.testing.assert_close(dgamma_triton, dgamma_hipified, atol=atol_bwd, rtol=rtol_bwd), 'dgamma does not match hipified'
+    torch.testing.assert_close(dgamma_triton, dgamma_torch, atol=atol_bwd, rtol=rtol_bwd), 'dgamma does not match torch'
 
 
 # END YE'S TE TEST <<<<<<<<<<
