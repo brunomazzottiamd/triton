@@ -360,7 +360,7 @@ class RMSNorm(torch.autograd.Function):
             _rmsnorm_bwd_dg_reduce[grid_reduce](dg_tmp, dg, dg_tmp.stride(0), n_rows, n_cols, BLOCK_SIZE_M=128,
                                                 BLOCK_SIZE_N=64)
 
-        return dx, dg, None, None, None, None, None, None, None, None, None
+        return dx, dg, None, None, None, None, None, None, None, None, None, None, None
 
 
 rmsnorm = RMSNorm.apply
@@ -487,6 +487,110 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_s
     assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
     f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
     f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
+
+
+# >>>>>>>> BEGIN YE'S TE TEST
+
+import os
+
+
+def sizeof(in_dtype):
+    if in_dtype == torch.float32:
+        return 4
+    elif in_dtype == torch.float16 or in_dtype == torch.bfloat16:
+        return 2
+    elif in_dtype == torch.float8_e4m3fnuz or in_dtype == torch.float8_e5m2fnuz:
+        return 1
+    return 1
+
+
+def get_tolerances(in_dtype):
+    if in_dtype == torch.float32:
+        return 1e-6, 5e-6
+    elif in_dtype == torch.float16:
+        return 1e-5, 1e-3
+    elif in_dtype == torch.bfloat16:
+        return 1e-5, 1e-2
+    elif in_dtype == torch.float8_e4m3fnuz or in_dtype == torch.float8_e5m2fnuz:
+        return 1e-2, 1e-2
+    else:
+        raise RuntimeError("Invalid type")
+
+
+test_shapes = [
+    (2048, 4096),
+    (768, 2048),
+    (256, 1024),
+    (128, 768),
+    (64, 512),
+    (173, 409),
+    (71, 3571),
+    (29, 17389),
+]
+
+test_dtypes = [torch.float32, torch.float16, torch.bfloat16]
+
+all_boolean = [True, False]
+
+
+# matrix size from tests/cpp/operator/test_rmsnorm.cu
+@pytest.mark.parametrize("M, N", test_shapes)
+@pytest.mark.parametrize("in_dtype", test_dtypes)
+#TODO add fp8/bf8 once fp8 triton kernels are available
+@pytest.mark.parametrize("out_dtype", test_dtypes)
+@pytest.mark.parametrize("zero_centered_gamma", all_boolean)
+def test_rmsnorm_fwd_bwd_triton(M, N, in_dtype, out_dtype, zero_centered_gamma):
+    if sizeof(in_dtype) < sizeof(out_dtype):
+        pytest.skip("size of input dtype < size of output dtype")
+    if (in_dtype == torch.float16 and out_dtype == torch.bfloat16) or (in_dtype == torch.bfloat16
+                                                                       and out_dtype == torch.float16):
+        pytest.skip("hipified rmsnorm kernel does not support mixing fp16 and bf16")
+    ## Uniform distribution between [-2.0, 1.0]
+    input_tensor = torch.rand(M, N, dtype=torch.float32, device='cuda') * 3.0 - 2.0
+    input_tensor = input_tensor.to(in_dtype)
+    # in hipfied kernel cpp test, weight type == input_type
+    gamma_tensor = torch.rand(N, dtype=torch.float32, device='cuda') * 3.0 - 2.0
+    gamma_tensor = gamma_tensor.to(in_dtype)
+    dz_tensor = torch.rand(M, N, dtype=torch.float32, device='cuda') * 3.0 - 2.0
+    # in hipfied kernel cpp test, dz is of weight type
+    dz_tensor = dz_tensor.to(in_dtype)
+
+    epsilon = 1e-5
+    # run the triton path
+    # in hipfied kernel cpp test, z is of out_type
+    ln_out_triton = torch.empty(M, N, dtype=out_dtype, device='cuda')
+    # ln_out_triton, rsigma_triton = te_rmsnorm_fwd_fp8_noalloc_triton(input_tensor, gamma_tensor, epsilon, ln_out_triton,
+    #                                                                  out_dtype, zero_centered_gamma)
+
+    # run the reference hipified kernel path
+    # dummy fp8 meta
+    scale_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
+    amax_tensor = torch.zeros(0, dtype=torch.float32, device='cuda')
+    scale_inv_tensor = torch.empty(0, dtype=torch.float32, device='cuda')
+
+    fwd_ln_sm_margin = int(os.getenv("NVTE_FWD_LAYERNORM_SM_MARGIN", "0"))
+    ln_out_hipified = torch.empty(M, N, dtype=out_dtype, device='cuda')
+    # ln_out_hipified, rsigma_hipified = tex.rmsnorm_fwd_fp8_noalloc(input_tensor, gamma_tensor, epsilon, scale_tensor,
+    #                                                                ln_out_hipified, amax_tensor, scale_inv_tensor,
+    #                                                                get_te_dtype(out_dtype), fwd_ln_sm_margin,
+    #                                                                zero_centered_gamma)
+    atol, rtol = get_tolerances(out_dtype)
+    # assert torch.allclose(ln_out_triton, ln_out_hipified, atol=1e-8, rtol=rtol), 'ln_out does not match'
+    # rsigma is of type fp32
+    # assert torch.allclose(rsigma_triton, rsigma_hipified, atol=1e-6, rtol=5e-5), 'rsigma does not match'
+
+    # dx_triton, dgamma_triton = te_rmsnorm_bwd_triton(dz_tensor, input_tensor, rsigma_triton, gamma_tensor,
+    #                                                  zero_centered_gamma)
+    # dx_hipified, dgamma_hipified = tex.rmsnorm_bwd(dz_tensor, input_tensor, rsigma_hipified, gamma_tensor,
+    #                                                fwd_ln_sm_margin, zero_centered_gamma)
+
+    atol_bwd = 5e-6
+    rtol_bwd = 1e-4
+    # torch.testing.assert_close(dx_triton, dx_hipified, atol=atol_bwd, rtol=rtol_bwd)
+    # torch.testing.assert_close(dgamma_triton, dgamma_hipified, atol=atol_bwd, rtol=rtol_bwd)
+
+
+# END YE'S TE TEST <<<<<<<<<<
 
 
 #Benchmark
