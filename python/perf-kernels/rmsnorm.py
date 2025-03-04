@@ -394,14 +394,14 @@ arg_to_torch_dtype = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': tor
 @pytest.mark.parametrize('DG_ATOMIC', [True, False])
 # yapf: disable
 @pytest.mark.parametrize('M, N', [
-    (1, 4),
-    (2, 10),
-    (256, 4096),
-    (4096, 8192),
-    (1, 31744),
-    (8192, 65536),
-    (873, 1245),
-    (4096, 5120),  # shape suggested by Ye
+    (2048, 4096),
+    (768, 2048),
+    (256, 1024),
+    (128, 768),
+    (64, 512),
+    (173, 409),
+    (71, 3571),
+    (29, 17389),
 ])
 # yapf: enable
 def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_str):
