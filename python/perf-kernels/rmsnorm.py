@@ -490,8 +490,52 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_s
 
 
 # >>>>>>>> BEGIN YE'S TE TEST
+# Run with:
+# > pytest rmsnorm.py::test_rmsnorm_fwd_bwd_triton
 
 import os
+
+
+def te_rmsnorm_fwd_fp8_noalloc_triton(input, weight, eps, ln_out, otype, zero_centered_gamma):
+    M, N = input.shape
+    rsigma = torch.empty((M, ), device='cuda', dtype=torch.float32)
+    MAX_FUSED_SIZE = 65536 // input.element_size()
+    blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
+    USE_BLOCKED = N > blk_size
+    NUM_PRGMS = min(M, get_num_sms())
+    grid = lambda meta: (NUM_PRGMS, )
+    ln_out = ln_out.view(otype)
+    rms_kernel[grid](ln_out, input, weight, rsigma, input.stride(0), ln_out.stride(0), M, N, eps, zero_centered_gamma,
+                     blk_size, USE_BLOCKED, NUM_PRGMS)
+
+    return ln_out, rsigma
+
+
+def te_rmsnorm_bwd_triton(dz, x, rsigma, gamma, zero_centered_gamma):
+    dz_ = dz.contiguous()
+    x_ = x.contiguous()
+    rsigma_ = rsigma.contiguous()
+    gamma_ = gamma.contiguous()
+
+    dx = torch.empty_like(x_)
+    dgamma = torch.empty_like(gamma_)
+
+    M, N = x_.shape
+    dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
+
+    MAX_FUSED_SIZE = 65536 // x_.element_size()
+    blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
+    USE_BLOCKED = N > blk_size
+    NUM_PRGMS = min(M, get_num_sms())
+    grid_bwd = lambda meta: (NUM_PRGMS, )
+
+    rms_bwd_kernel[grid_bwd](dz_, x_, gamma_, rsigma_, dx, dg_tmp, x_.stride(0), dz_.stride(0), M, N,
+                             zero_centered_gamma, blk_size, USE_BLOCKED, NUM_PRGMS, num_warps=8, DG_ATOMIC=False)
+
+    grid_reduce = lambda meta: [triton.cdiv(N, meta['BLOCK_SIZE_N'])]
+    _rmsnorm_bwd_dg_reduce[grid_reduce](dg_tmp, dgamma, dg_tmp.stride(0), M, N, BLOCK_SIZE_M=128, BLOCK_SIZE_N=64)
+
+    return dx, dgamma
 
 
 def sizeof(in_dtype):
@@ -559,8 +603,8 @@ def test_rmsnorm_fwd_bwd_triton(M, N, in_dtype, out_dtype, zero_centered_gamma):
     # run the triton path
     # in hipfied kernel cpp test, z is of out_type
     ln_out_triton = torch.empty(M, N, dtype=out_dtype, device='cuda')
-    # ln_out_triton, rsigma_triton = te_rmsnorm_fwd_fp8_noalloc_triton(input_tensor, gamma_tensor, epsilon, ln_out_triton,
-    #                                                                  out_dtype, zero_centered_gamma)
+    ln_out_triton, rsigma_triton = te_rmsnorm_fwd_fp8_noalloc_triton(input_tensor, gamma_tensor, epsilon, ln_out_triton,
+                                                                     out_dtype, zero_centered_gamma)
 
     # run the reference hipified kernel path
     # dummy fp8 meta
@@ -579,8 +623,8 @@ def test_rmsnorm_fwd_bwd_triton(M, N, in_dtype, out_dtype, zero_centered_gamma):
     # rsigma is of type fp32
     # assert torch.allclose(rsigma_triton, rsigma_hipified, atol=1e-6, rtol=5e-5), 'rsigma does not match'
 
-    # dx_triton, dgamma_triton = te_rmsnorm_bwd_triton(dz_tensor, input_tensor, rsigma_triton, gamma_tensor,
-    #                                                  zero_centered_gamma)
+    dx_triton, dgamma_triton = te_rmsnorm_bwd_triton(dz_tensor, input_tensor, rsigma_triton, gamma_tensor,
+                                                     zero_centered_gamma)
     # dx_hipified, dgamma_hipified = tex.rmsnorm_bwd(dz_tensor, input_tensor, rsigma_hipified, gamma_tensor,
     #                                                fwd_ln_sm_margin, zero_centered_gamma)
 
