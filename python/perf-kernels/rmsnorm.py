@@ -372,8 +372,8 @@ def torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype=torch.float16, epsilo
     # cast to float32 as the triton kernel
     x_f32 = x.float()
     g_f32 = g.float()
-    rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * 1 / N)
-    rsigma = 1.0 / rms
+    mean_sq_x = torch.mean(x_f32 * x_f32, dim=-1)
+    rsigma = torch.rsqrt(mean_sq_x + epsilon)
     if (ZERO_CENTERED_GAMMA):
         g_f32 = g_f32 + 1
     rms_norm_f32 = x_f32 * rsigma.unsqueeze(1) * g_f32
