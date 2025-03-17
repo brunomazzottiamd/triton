@@ -302,7 +302,8 @@ def _rmsnorm_bwd_dg_reduce(dg_in_ptr, dg_out_ptr, dg_in_stride, n_rows, n_cols, 
 class RMSNorm(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, epsilon=1e-6):
+    def forward(ctx, x, g, y, rsigma, dx, dg, dg_tmp, ZERO_CENTERED_GAMMA, epsilon=1e-6):
+        n_rows, n_cols = x.shape
         # heuristics for block size:
         # MAX_FUSED_SIZE = 65536 // x.element_size()
         # blk_size = min(MAX_FUSED_SIZE, triton.next_power_of_2(n_cols))
@@ -360,7 +361,7 @@ class RMSNorm(torch.autograd.Function):
             _rmsnorm_bwd_dg_reduce[grid_reduce](dg_tmp, dg, dg_tmp.stride(0), n_rows, n_cols, BLOCK_SIZE_M=128,
                                                 BLOCK_SIZE_N=64)
 
-        return dx, dg, None, None, None, None, None, None, None, None, None
+        return dx, dg, None, None, None, None, None, None, None
 
 
 rmsnorm = RMSNorm.apply
@@ -422,9 +423,7 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_s
         dg = torch.empty_like(g, dtype=in_dtype, requires_grad=False)
         dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
 
-    n_rows, n_cols = x.shape
-
-    y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA)
+    y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, ZERO_CENTERED_GAMMA)
 
     y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
 
@@ -471,8 +470,7 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_s
         dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
 
     # Run Triton forward pass to build the graph for backward.
-    y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
-                       ZERO_CENTERED_GAMMA)
+    y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, ZERO_CENTERED_GAMMA)
     y_triton.backward(grad_output, retain_graph=True)
     grad_x_triton = x_triton.grad.to(out_dtype)
     grad_g_triton = g_triton.grad.to(out_dtype)
@@ -562,7 +560,6 @@ def run_benchmark(args):
         else:
             dg = dg = torch.empty((1, N), device='cuda', dtype=dtype, requires_grad=False)
             dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
-        n_rows, n_cols = x.shape
         stream = torch.cuda.Stream()
         torch.cuda.set_stream(stream)
         g = torch.ones((1, N), device='cuda')
@@ -570,7 +567,7 @@ def run_benchmark(args):
 
         def rms_fwd():
             if provider == 'triton':
-                return rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA)
+                return rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, ZERO_CENTERED_GAMMA)
             if provider == 'torch':
                 return torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA)
 
@@ -592,7 +589,7 @@ def run_benchmark(args):
                 dg_tmp_ = torch.empty_like(x_, dtype=torch.float32)
             grad_out = torch.randn_like(y_)
 
-            y_out = rmsnorm(x_, g_, y_, rsigma_, dx_, dg_, dg_tmp_, n_rows, n_cols, ZERO_CENTERED_GAMMA)
+            y_out = rmsnorm(x_, g_, y_, rsigma_, dx_, dg_, dg_tmp_, ZERO_CENTERED_GAMMA)
 
             ms = triton.testing.do_bench(lambda: y_out.backward(grad_out, retain_graph=True), grad_to_none=[x_, g_])
         else:
@@ -670,9 +667,7 @@ def main():
             dg = torch.empty_like(g, dtype=in_dtype, requires_grad=False)
             dg_tmp = torch.zeros(M, N, device='cuda', dtype=torch.float32, requires_grad=False)
 
-        n_rows, n_cols = x.shape
-
-        y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA)
+        y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, ZERO_CENTERED_GAMMA)
 
         if args.mode == "bwd":
             grad_output = torch.randn_like(y_triton)
