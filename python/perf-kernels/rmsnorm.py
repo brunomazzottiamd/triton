@@ -402,7 +402,8 @@ arg_to_torch_dtype = {'fp16': torch.float16, 'bf16': torch.bfloat16, 'fp32': tor
     (1, 31744),
     (8192, 65536),
     (873, 1245),
-    (4096, 5120),  # shape suggested by Ye
+    (4096, 5120),  # shape suggested by TE team
+    (8192, 8192),  # shape suggested by TE team
 ])
 # yapf: enable
 def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, DG_ATOMIC, in_dtype_str, out_dtype_str):
