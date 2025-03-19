@@ -293,7 +293,8 @@ def _rmsnorm_bwd_dg_reduce(dg_in_ptr, dg_out_ptr, dg_in_stride, n_rows, n_cols, 
         rows = i + tl.arange(0, BLOCK_SIZE_M)
         mask = (rows[:, None] < n_rows) & (cols[None, :] < n_cols)
         offs = rows[:, None] * n_cols + cols[None, :]
-        acc += tl.load(dg_in_ptr + offs, mask=mask, other=0.).to(tl.float32)
+        # acc += tl.load(dg_in_ptr + offs, mask=mask, other=0.).to(tl.float32)
+        acc += tl.load(dg_in_ptr + offs, mask=mask, other=0., cache_modifier=".cg").to(tl.float32)
 
     sum_dg = tl.sum(acc, axis=0)
     tl.store(dg_out_ptr + cols, sum_dg.to(dg_out_ptr.type.element_ty), mask=cols < n_cols)
