@@ -170,20 +170,78 @@ def triton_gmm_kernel(
     tl.assume(stride_out_n > 0)
 
     num_programs = tl.num_programs(0)
-    tile_idx = tl.program_id(0)
 
-    # N dimension of all MM problems is the same.
+    tile = tl.program_id(0)  # Current tile.
+    last_mm_end = 0  # Tile limit of last MM problem.
+    last_lhs_row = 0  # Last row of lhs, each group reads some rows of lhs.
+
+    # N dimension of all MM problems is the same, so the number of tiles in N dimension.
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
 
     # Loop through all (m, K, N) MM problems:
     #   (m, K) x (K, N) = (m, N)
     #   sum(m) = M
     for g in range(G):
-        # Get the m dimension of current MM problem.
+        # Get m dimension of current MM problem.
         gm = tl.load(group_sizes_ptr + g * stride_group_sizes_g)
 
+        # Number of tiles in M dimension and total tiles of current MM problem.
         num_m_tiles = tl.cdiv(gm, BLOCK_SIZE_M)
         num_tiles = num_m_tiles * num_n_tiles
+
+        # Loop through tiles of current MM problem.
+        while tile >= last_mm_end and tile < last_mm_end + num_tiles:
+            # Figure out tile coordinates in current MM problem.
+            tile_in_mm = tile - last_mm_end
+            tile_m = tile_in_mm // num_n_tiles
+            tile_n = tile_in_mm % num_n_tiles
+
+            # Do regular MM:
+            offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            offs_k = tl.arange(0, BLOCK_SIZE_K)
+            lhs_ptrs = (
+                lhs_ptr
+                + (last_lhs_row + offs_lhs_m[:, None]) * stride_lhs_m
+                + offs_k[None, :] * stride_lhs_k
+            )
+            rhs_ptrs = (
+                rhs_ptr
+                + g * stride_rhs_g
+                + offs_k[:, None] * stride_rhs_k
+                + offs_rhs_n[None, :] * stride_rhs_n
+            )
+            acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+            for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+                lhs = tl.load(
+                    lhs_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0
+                )
+                rhs = tl.load(
+                    rhs_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0
+                )
+                acc += tl.dot(lhs, rhs)
+                lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
+                rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
+            acc = acc.to(out_ptr.type.element_ty)
+            offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            out_ptrs = (
+                out_ptr
+                + offs_out_m[:, None] * stride_out_m
+                + offs_out_n[None, :] * stride_out_n
+            )
+            tl.store(
+                out_ptrs,
+                acc,
+                mask=(offs_out_m[:, None] < M) & (offs_out_n[None, :] < N),
+            )
+
+            # Go to the next tile by advancing number of programs.
+            tile += num_programs
+
+        # Get ready to go to the next MM problem.
+        last_mm_end += num_tiles
+        last_lhs_row += gm
 
 
 def triton_gmm(
@@ -248,7 +306,7 @@ def triton_gmm(
         (32, 16, 8, 4),  # Test 1
         (512, 4096, 2048, 160),  # Test 2
         (49152, 1408, 2048, 64),  # deepseekv2-16B
-        (3145728, 2048, 1408, 8),  # deepseekv2-16B
+        # (3145728, 2048, 1408, 8),  # deepseekv2-16B (IT'S BIG!)
         (393216, 2048, 1408, 64),  # deepseekv2-16B
         (32768, 6144, 16384, 8),  # Mixtral 8x22B proxy model
         (32768, 16384, 6144, 8),  # Mixtral 8x22B proxy model
