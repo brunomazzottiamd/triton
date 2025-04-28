@@ -66,11 +66,11 @@ def gen_input(
     return lhs, rhs, group_sizes
 
 
-def gen_output(M: int, N: int) -> Tensor:
+def gen_output(M: int, N: int, out_dtype: torch.dtype = torch.bfloat16) -> Tensor:
     assert M > 0, f"Number of out rows M must be positive (M = {M})."
     assert N > 0, f"Number of out columns N must be positive (N = {N})."
 
-    out = torch.empty((M, N), dtype=torch.bfloat16, device=DEVICE)
+    out = torch.empty((M, N), dtype=out_dtype, device=DEVICE)
 
     return out
 
@@ -101,12 +101,18 @@ def shapes_from_input(
 
 
 def torch_gmm(
-    lhs: Tensor, rhs: Tensor, group_sizes: Tensor, out: Tensor | None = None
+    lhs: Tensor,
+    rhs: Tensor,
+    group_sizes: Tensor,
+    out: Tensor | None = None,
+    out_dtype: torch.dtype = torch.bfloat16,
 ) -> Tensor:
+    assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
+
     M, _, N, G = shapes_from_input(lhs, rhs, group_sizes)
 
     if out is None:
-        out = gen_output(M, N)
+        out = gen_output(M, N, out_dtype=out_dtype)
 
     offsets = torch.zeros(G + 1, dtype=torch.int32, device=DEVICE)
     torch.cumsum(group_sizes, dim=0, out=offsets[1:])
@@ -250,7 +256,10 @@ def triton_gmm(
     group_sizes: Tensor,
     tiling: tuple[int, int, int] | None = None,
     out: Tensor | None = None,
+    out_dtype: torch.dtype = torch.bfloat16,
 ) -> Tensor:
+    assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
+
     M, K, N, G = shapes_from_input(lhs, rhs, group_sizes)
 
     if tiling is None:
@@ -272,7 +281,7 @@ def triton_gmm(
     ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
 
     if out is None:
-        out = gen_output(M, N)
+        out = gen_output(M, N, out_dtype=out_dtype)
 
     grid = (num_sms(),)
     triton_gmm_kernel[grid](
@@ -300,13 +309,62 @@ def triton_gmm(
     return out
 
 
+def test_simple_gmm():
+    M, K, N, G = 10, 2, 3, 4
+    group_sizes = torch.tensor([3, 2, 4, 1], dtype=torch.int32, device=DEVICE)
+    dtype = torch.float32
+    # fmt: off
+    lhs = torch.tensor([
+        [ 1,  2],  # Group 0 (first 3 rows)
+        [ 3,  4],
+        [ 5,  6],
+        [ 7,  8],  # Group 1 (next 2 rows)
+        [ 9, 10],
+        [11, 12],  # Group 2 (next 4 rows)
+        [13, 14],
+        [15, 16],
+        [17, 18],
+        [19, 20],  # Group 3 (last 1 row)
+    ], dtype=dtype, device=DEVICE)
+    rhs = torch.tensor([
+        [[ 1,  2,  3],  # Group 0 matrix (2, 3)
+         [ 4,  5,  6]],
+        [[ 7,  8,  9],  # Group 1 matrix (2, 3)
+         [10, 11, 12]],
+        [[13, 14, 15],  # Group 2 matrix (2, 3)
+         [16, 17, 18]],
+        [[19, 20, 21],  # Group 3 matrix (2, 3)
+         [22, 23, 24]],
+    ], dtype=dtype, device=DEVICE)
+    expected_out = torch.tensor([
+        [  9,  12,  15],  # Group 0 matrix (3, 3)
+        [ 19,  26,  33],
+        [ 29,  40,  51],
+        [129, 144, 159],  # Group 1 matrix (2, 3)
+        [163, 182, 201],
+        [335, 358, 381],  # Group 2 matrix (4, 3)
+        [393, 420, 447],
+        [451, 482, 513],
+        [509, 544, 579],
+        [801, 840, 879],  # Group 3 matrix (1, 3)
+    ], dtype=dtype, device=DEVICE)
+    # fmt: on
+    out_torch = torch_gmm(lhs, rhs, group_sizes, out_dtype=dtype)
+    print("\nout_torch", out_torch, sep="\n")
+    torch.testing.assert_close(expected_out, out_torch)
+    # FIXME: Triton kernel seems to be stuck in an infinite loop in this test!
+    out_triton = triton_gmm(lhs, rhs, group_sizes, out_dtype=dtype)
+    print("\nout_triton", out_triton, sep="\n")
+    torch.testing.assert_close(expected_out, out_triton)
+
+
 @pytest.mark.parametrize(
     "M, K, N, G",
     [
         (32, 16, 8, 4),  # Test 1
         (512, 4096, 2048, 160),  # Test 2
         (49152, 1408, 2048, 64),  # deepseekv2-16B
-        # (3145728, 2048, 1408, 8),  # deepseekv2-16B (IT'S BIG!)
+        # (3145728, 2048, 1408, 8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape!)
         (393216, 2048, 1408, 64),  # deepseekv2-16B
         (32768, 6144, 16384, 8),  # Mixtral 8x22B proxy model
         (32768, 16384, 6144, 8),  # Mixtral 8x22B proxy model
