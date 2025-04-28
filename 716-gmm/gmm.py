@@ -103,7 +103,7 @@ def shapes_from_input(
 def torch_gmm(
     lhs: Tensor, rhs: Tensor, group_sizes: Tensor, out: Tensor | None = None
 ) -> Tensor:
-    M, K, N, G = shapes_from_input(lhs, rhs, group_sizes)
+    M, _, N, G = shapes_from_input(lhs, rhs, group_sizes)
 
     if out is None:
         out = gen_output(M, N)
@@ -115,6 +115,129 @@ def torch_gmm(
         start_idx = offsets[g]
         end_idx = offsets[g + 1]
         out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[g]
+
+    return out
+
+
+def num_sms() -> int:
+    num_sms = torch.cuda.get_device_properties(DEVICE).multi_processor_count
+    assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
+    return num_sms
+
+
+def is_power_of_2(x: int) -> bool:
+    return (x > 0) and (x & (x - 1) == 0)
+
+
+@triton.jit
+def triton_gmm_kernel(
+    # Tensor pointers:
+    lhs_ptr,
+    rhs_ptr,
+    group_sizes_ptr,
+    out_ptr,
+    # Tensor shapes:
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_group_sizes_g: int,
+    stride_out_m: int,
+    stride_out_n: int,
+    # Meta-parameters:
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+):
+    tl.assume(M > 0)
+    tl.assume(K > 0)
+    tl.assume(N > 0)
+    tl.assume(G > 0)
+
+    tl.assume(stride_lhs_m > 0)
+    tl.assume(stride_lhs_k > 0)
+    tl.assume(stride_rhs_g > 0)
+    tl.assume(stride_rhs_k > 0)
+    tl.assume(stride_rhs_n > 0)
+    tl.assume(stride_group_sizes_g > 0)
+    tl.assume(stride_out_m > 0)
+    tl.assume(stride_out_n > 0)
+
+    num_programs = tl.num_programs(0)
+    tile_idx = tl.program_id(0)
+
+    # N dimension of all MM problems is the same.
+    num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
+
+    # Loop through all (m, K, N) MM problems:
+    #   (m, K) x (K, N) = (m, N)
+    #   sum(m) = M
+    for g in range(G):
+        # Get the m dimension of current MM problem.
+        gm = tl.load(group_sizes_ptr + g * stride_group_sizes_g)
+
+        num_m_tiles = tl.cdiv(gm, BLOCK_SIZE_M)
+        num_tiles = num_m_tiles * num_n_tiles
+
+
+def triton_gmm(
+    lhs: Tensor,
+    rhs: Tensor,
+    group_sizes: Tensor,
+    tiling: tuple[int, int, int] | None = None,
+    out: Tensor | None = None,
+) -> Tensor:
+    M, K, N, G = shapes_from_input(lhs, rhs, group_sizes)
+
+    if tiling is None:
+        # TODO: Figure out a sensible tiling default.
+        tiling = (64, 64, 64)
+
+    assert (
+        len(tiling) == 3
+    ), f"tiling must have 3 dimensions (len(tiling) = {len(tiling)})."
+    block_size_m, block_size_k, block_size_n = tiling
+    assert is_power_of_2(
+        block_size_m
+    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
+    assert is_power_of_2(
+        block_size_k
+    ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
+    assert is_power_of_2(
+        block_size_n
+    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
+
+    if out is None:
+        out = gen_output(M, N)
+
+    grid = (num_sms(),)
+    triton_gmm_kernel[grid](
+        # Tensor pointers:
+        lhs,
+        rhs,
+        group_sizes,
+        out,
+        # Tensor shapes:
+        M,
+        K,
+        N,
+        G,
+        # Tensor strides:
+        *lhs.stride(),
+        *rhs.stride(),
+        *group_sizes.stride(),
+        *out.stride(),
+        # Meta-parameters:
+        BLOCK_SIZE_M=block_size_m,
+        BLOCK_SIZE_K=block_size_k,
+        BLOCK_SIZE_N=block_size_n,
+    )
 
     return out
 
@@ -134,3 +257,5 @@ def torch_gmm(
 def test_gmm(M: int, K: int, N: int, G: int):
     lhs, rhs, group_sizes = gen_input(M, K, N, G, rng_seed=0)
     out_torch = torch_gmm(lhs, rhs, group_sizes)
+    out_triton = triton_gmm(lhs, rhs, group_sizes)
+    torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
