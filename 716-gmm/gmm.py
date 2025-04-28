@@ -7,7 +7,7 @@
 #   * rhs is (G, K, N) bf16
 #   * group_sizes is (G,) int32
 # * Output tensors:
-#   * out is (M, N)
+#   * out is (M, N) bf16
 
 
 import random
@@ -107,6 +107,14 @@ def torch_gmm(
 
     if out is None:
         out = gen_output(M, N)
+
+    offsets = torch.zeros(G + 1, dtype=torch.int32, device=DEVICE)
+    torch.cumsum(group_sizes, dim=0, out=offsets[1:])
+
+    for g in range(G):
+        start_idx = offsets[g]
+        end_idx = offsets[g + 1]
+        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[g]
 
     return out
 
