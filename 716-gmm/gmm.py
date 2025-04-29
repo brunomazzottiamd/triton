@@ -315,7 +315,12 @@ def triton_gmm(
         M, N, preferred_element_type=preferred_element_type, existing_out=existing_out
     )
 
-    grid = (num_sms(),)
+    # Compute grid.
+    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
+    num_n_tiles = triton.cdiv(N, block_size_n)
+    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
+    grid = (min(num_sms(), num_tiles),)
+
     triton_gmm_kernel[grid](
         # Tensor pointers:
         lhs,
