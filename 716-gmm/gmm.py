@@ -393,19 +393,25 @@ def test_simple_gmm():
     torch.testing.assert_close(expected_out, out_triton)
 
 
+# fmt: off
 @pytest.mark.parametrize(
     "M, K, N, G",
     [
-        (32, 16, 8, 4),  # Test 1
-        (512, 4096, 2048, 160),  # Test 2
-        (49152, 1408, 2048, 64),  # deepseekv2-16B
-        # (3145728, 2048, 1408, 8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape!)
-        (393216, 2048, 1408, 64),  # deepseekv2-16B
-        (32768, 6144, 16384, 8),  # Mixtral 8x22B proxy model
-        (32768, 16384, 6144, 8),  # Mixtral 8x22B proxy model
+        (     32,    16,     8,   4),  # Test 1
+        (    512,  4096,  2048, 160),  # Test 2
+        (  49152,  1408,  2048,  64),  # deepseekv2-16B
+        (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape!)
+        ( 393216,  2048,  1408,  64),  # deepseekv2-16B
+        (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
+        (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
     ],
 )
+# fmt: on
 def test_gmm(M: int, K: int, N: int, G: int):
+    if M == 3145728:
+        pytest.skip(
+            f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} shape."
+        )
     lhs, rhs, group_sizes = gen_input(M, K, N, G, rng_seed=0)
     out_torch = torch_gmm(lhs, rhs, group_sizes)
     out_triton = triton_gmm(lhs, rhs, group_sizes)
