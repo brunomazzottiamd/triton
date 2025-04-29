@@ -44,7 +44,12 @@ def random_group_sizes(M: int, G: int, rng_seed: int | None = None) -> list[int]
 
 
 def gen_input(
-    M: int, K: int, N: int, G: int, rng_seed: int | None = None
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    preferred_element_type: torch.dtype = torch.bfloat16,
+    rng_seed: int | None = None,
 ) -> tuple[Tensor, Tensor, Tensor]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
@@ -54,28 +59,29 @@ def gen_input(
     if rng_seed is not None:
         torch.manual_seed(rng_seed)
 
-    lhs = torch.randn((M, K), dtype=torch.float32, device=DEVICE)
-    lhs = lhs.to(torch.bfloat16)
-
-    rhs = torch.randn((G, K, N), dtype=torch.float32, device=DEVICE)
-    rhs = rhs.to(torch.bfloat16)
-
-    group_sizes = random_group_sizes(M, G, rng_seed=rng_seed)
-    group_sizes = torch.tensor(group_sizes, dtype=torch.int32, device=DEVICE)
+    lhs = torch.randn((M, K), dtype=torch.float32, device=DEVICE).to(
+        preferred_element_type
+    )
+    rhs = torch.randn((G, K, N), dtype=torch.float32, device=DEVICE).to(
+        preferred_element_type
+    )
+    group_sizes = torch.tensor(
+        random_group_sizes(M, G, rng_seed=rng_seed), dtype=torch.int32, device=DEVICE
+    )
 
     return lhs, rhs, group_sizes
 
 
-def gen_output(M: int, N: int, out_dtype: torch.dtype = torch.bfloat16) -> Tensor:
+def gen_output(
+    M: int, N: int, preferred_element_type: torch.dtype = torch.bfloat16
+) -> Tensor:
     assert M > 0, f"Number of out rows M must be positive (M = {M})."
     assert N > 0, f"Number of out columns N must be positive (N = {N})."
 
-    out = torch.empty((M, N), dtype=out_dtype, device=DEVICE)
-
-    return out
+    return torch.empty((M, N), dtype=preferred_element_type, device=DEVICE)
 
 
-def shapes_from_input(
+def shape_from_input(
     lhs: Tensor, rhs: Tensor, group_sizes: Tensor
 ) -> tuple[int, int, int, int]:
     assert lhs.dim() == 2, f"lhs must have 2 dimensions (lhs.dim() = {lhs.dim()})."
@@ -100,19 +106,41 @@ def shapes_from_input(
     return M, K, N, G
 
 
+def get_output(
+    M: int,
+    N: int,
+    preferred_element_type: torch.dtype = torch.bfloat16,
+    existing_out: Tensor | None = None,
+) -> Tensor:
+    assert M > 0, f"Number of out rows M must be positive (M = {M})."
+    assert N > 0, f"Number of out columns N must be positive (N = {N})."
+
+    if existing_out is not None:
+        assert (
+            existing_out.dtype == preferred_element_type
+        ), f"Existing output tensor type and preferred output type don't match ({existing_out.dtype} != {preferred_element_type})."
+        assert existing_out.shape == (
+            M,
+            N,
+        ), f"Existing output tensor shape and GMM shape don't match ({tuple(existing_out.shape)} != {(M, N)})."
+        return existing_out
+
+    return gen_output(M, N, preferred_element_type=preferred_element_type)
+
+
 def torch_gmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
-    out: Tensor | None = None,
-    out_dtype: torch.dtype = torch.bfloat16,
+    preferred_element_type: torch.dtype = torch.bfloat16,
+    existing_out: Tensor | None = None,
 ) -> Tensor:
     assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
 
-    M, _, N, G = shapes_from_input(lhs, rhs, group_sizes)
-
-    if out is None:
-        out = gen_output(M, N, out_dtype=out_dtype)
+    M, _, N, G = shape_from_input(lhs, rhs, group_sizes)
+    out = get_output(
+        M, N, preferred_element_type=preferred_element_type, existing_out=existing_out
+    )
 
     offsets = torch.zeros(G + 1, dtype=torch.int32, device=DEVICE)
     torch.cumsum(group_sizes, dim=0, out=offsets[1:])
@@ -255,12 +283,12 @@ def triton_gmm(
     rhs: Tensor,
     group_sizes: Tensor,
     tiling: tuple[int, int, int] | None = None,
-    out: Tensor | None = None,
-    out_dtype: torch.dtype = torch.bfloat16,
+    preferred_element_type: torch.dtype = torch.bfloat16,
+    existing_out: Tensor | None = None,
 ) -> Tensor:
     assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
 
-    M, K, N, G = shapes_from_input(lhs, rhs, group_sizes)
+    M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
 
     if tiling is None:
         # TODO: Figure out a sensible tiling default.
@@ -280,8 +308,9 @@ def triton_gmm(
         block_size_n
     ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
 
-    if out is None:
-        out = gen_output(M, N, out_dtype=out_dtype)
+    out = get_output(
+        M, N, preferred_element_type=preferred_element_type, existing_out=existing_out
+    )
 
     grid = (num_sms(),)
     triton_gmm_kernel[grid](
@@ -310,7 +339,7 @@ def triton_gmm(
 
 
 def test_simple_gmm():
-    M, K, N, G = 10, 2, 3, 4
+    # M, K, N, G = 10, 2, 3, 4
     group_sizes = torch.tensor([3, 2, 4, 1], dtype=torch.int32, device=DEVICE)
     dtype = torch.float32
     # fmt: off
@@ -349,11 +378,11 @@ def test_simple_gmm():
         [801, 840, 879],  # Group 3 matrix (1, 3)
     ], dtype=dtype, device=DEVICE)
     # fmt: on
-    out_torch = torch_gmm(lhs, rhs, group_sizes, out_dtype=dtype)
+    out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=dtype)
     print("\nout_torch", out_torch, sep="\n")
     torch.testing.assert_close(expected_out, out_torch)
     # FIXME: Triton kernel seems to be stuck in an infinite loop in this test!
-    out_triton = triton_gmm(lhs, rhs, group_sizes, out_dtype=dtype)
+    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=dtype)
     print("\nout_triton", out_triton, sep="\n")
     torch.testing.assert_close(expected_out, out_triton)
 
