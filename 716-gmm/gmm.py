@@ -194,6 +194,11 @@ def triton_gmm_kernel(
     tl.assume(N > 0)
     tl.assume(G > 0)
 
+    M = M.to(tl.uint64)
+    K = K.to(tl.uint64)
+    N = N.to(tl.uint64)
+    G = G.to(tl.uint64)
+
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
     tl.assume(stride_rhs_g > 0)
@@ -203,27 +208,40 @@ def triton_gmm_kernel(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
-    num_programs = tl.num_programs(0)
+    stride_lhs_m = stride_lhs_m.to(tl.uint64)
+    stride_lhs_k = stride_lhs_k.to(tl.uint64)
+    stride_rhs_g = stride_rhs_g.to(tl.uint64)
+    stride_rhs_k = stride_rhs_k.to(tl.uint64)
+    stride_rhs_n = stride_rhs_n.to(tl.uint64)
+    stride_group_sizes_g = stride_group_sizes_g.to(tl.uint64)
+    stride_out_m = stride_out_m.to(tl.uint64)
+    stride_out_n = stride_out_n.to(tl.uint64)
+
+    num_programs = tl.num_programs(0).to(tl.uint64)
 
     # Current tile. Each program computes multiple tiles of each group.
-    tile = tl.program_id(0)
+    tile = tl.program_id(0).to(tl.uint64)
 
     # Tile limit of last MM problem (inclusive).
     last_mm_tile = 0
+    last_mm_tile = last_mm_tile.to(tl.uint64)
 
     # Last input row of lhs and output row of out. Each group reads some rows of
     # lhs and writes some rows to out.
     last_row = 0
+    last_row = last_row.to(tl.uint64)
 
     # Loop through all (m, K, N) MM problems:
     #   (m, K) x (K, N) = (m, N)
     #   sum(m) = M
     for g in range(G):
-        # Get m dimension of current MM problem.
-        m = tl.load(group_sizes_ptr + g * stride_group_sizes_g)
+        g = g.to(tl.uint64)
 
-        num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
-        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
+        # Get m dimension of current MM problem.
+        m = tl.load(group_sizes_ptr + g * stride_group_sizes_g).to(tl.uint64)
+
+        num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M).to(tl.uint64)
+        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N).to(tl.uint64)
         num_tiles = num_m_tiles * num_n_tiles
 
         # Loop through tiles of current MM problem.
@@ -234,9 +252,13 @@ def triton_gmm_kernel(
             tile_n = tile_in_mm % num_n_tiles
 
             # Do regular MM:
-            offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            offs_k = tl.arange(0, BLOCK_SIZE_K)
+            offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(
+                tl.uint64
+            )
+            offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(
+                tl.uint64
+            )
+            offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.uint64)
             lhs_ptrs = (
                 lhs_ptr
                 + (last_row + offs_lhs_m[:, None]) * stride_lhs_m
@@ -260,8 +282,12 @@ def triton_gmm_kernel(
                 lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
                 rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
             acc = acc.to(out_ptr.type.element_ty)
-            offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(
+                tl.uint64
+            )
+            offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(
+                tl.uint64
+            )
             out_ptrs = (
                 out_ptr
                 + (last_row + offs_out_m[:, None]) * stride_out_m
