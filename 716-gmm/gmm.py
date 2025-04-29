@@ -10,6 +10,7 @@
 #   * out is (M, N) bf16
 
 
+import argparse
 import random
 
 import torch
@@ -421,3 +422,39 @@ def test_gmm(M: int, K: int, N: int, G: int):
     out_torch = torch_gmm(lhs, rhs, group_sizes)
     out_triton = triton_gmm(lhs, rhs, group_sizes)
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
+
+
+def parse_args() -> argparse.Namespace:
+    def positive_int(value: str) -> int:
+        try:
+            int_value = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+        if int_value <= 0:
+            raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+        return int_value
+
+    parser = argparse.ArgumentParser(description="run GMM Triton kernel")
+    parser.add_argument("M", type=positive_int, help="number of rows")
+    parser.add_argument("K", type=positive_int, help="shared dimension")
+    parser.add_argument("N", type=positive_int, help="number of columns")
+    parser.add_argument("G", type=positive_int, help="number of groups")
+    parser.add_argument(
+        "--rng-seed",
+        type=int,
+        default=0,
+        help="random seed for input generation (default: 0)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    lhs, rhs, group_sizes = gen_input(
+        args.M, args.K, args.N, args.G, rng_seed=args.rng_seed
+    )
+    triton_gmm(lhs, rhs, group_sizes)
+
+
+if __name__ == "__main__":
+    main()
