@@ -10,15 +10,20 @@
 #   * out is (M, N) bf16
 
 
+# Python standard library
 import argparse
 import random
+import typing
 
+# PyTorch
 import torch
 from torch import Tensor
 
+# Triton
 import triton
 import triton.language as tl
 
+# pytest
 import pytest
 
 
@@ -197,6 +202,7 @@ def is_power_of_2(x: int) -> bool:
 
 
 @triton.jit
+@typing.no_type_check
 def triton_gmm_kernel(
     # Tensor pointers:
     lhs_ptr,
@@ -234,10 +240,18 @@ def triton_gmm_kernel(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
-    num_programs = tl.num_programs(0)
+    # WIP: 64-bit addressing
+    # stride_lhs_m = stride_lhs_m.to(tl.int64)
+    # stride_lhs_k = stride_lhs_k.to(tl.int64)
+    # stride_rhs_g = stride_rhs_g.to(tl.int64)
+    # stride_rhs_k = stride_rhs_k.to(tl.int64)
+    # stride_rhs_n = stride_rhs_n.to(tl.int64)
+    # stride_out_m = stride_out_m.to(tl.int64)
+    # stride_out_n = stride_out_n.to(tl.int64)
 
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
+    tl.device_assert(tile >= 0, "tile < 0 (at initialization)")
 
     # Tile limit of last MM problem (inclusive).
     last_mm_tile = 0
@@ -252,22 +266,35 @@ def triton_gmm_kernel(
     for g in range(G):
         # Get m dimension of current MM problem.
         m = tl.load(group_sizes_ptr + g)
+        tl.device_assert(m > 0, "m <= 0")
 
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
+        tl.device_assert(num_m_tiles > 0, "num_m_tiles <= 0")
         num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
+        tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
         num_tiles = num_m_tiles * num_n_tiles
+        tl.device_assert(num_tiles > 0, "num_tiles <= 0")
 
         # Loop through tiles of current MM problem.
         while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
             # Figure out tile coordinates in current MM problem.
             tile_in_mm = tile - last_mm_tile
+            tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
             tile_m = tile_in_mm // num_n_tiles
+            tl.device_assert(tile_m >= 0, "tile_m < 0")
+            tl.device_assert(tile_m < num_m_tiles, "tile_m >= num_m_tiles")
             tile_n = tile_in_mm % num_n_tiles
+            tl.device_assert(tile_n >= 0, "tile_n < 0")
+            tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
 
             # Do regular MM:
+
+            tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
             offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
             offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             offs_k = tl.arange(0, BLOCK_SIZE_K)
+
             lhs_ptrs = (
                 lhs_ptr
                 + (last_row + offs_lhs_m[:, None]) * stride_lhs_m
@@ -279,7 +306,9 @@ def triton_gmm_kernel(
                 + offs_k[:, None] * stride_rhs_k
                 + offs_rhs_n[None, :] * stride_rhs_n
             )
+
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
             for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
                 lhs = tl.load(
                     lhs_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0
@@ -290,9 +319,12 @@ def triton_gmm_kernel(
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
                 lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
                 rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
+
             acc = acc.to(out_ptr.type.element_ty)
+
             offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+
             out_ptrs = (
                 out_ptr
                 + (last_row + offs_out_m[:, None]) * stride_out_m
@@ -305,11 +337,14 @@ def triton_gmm_kernel(
             )
 
             # Go to the next tile by advancing number of programs.
-            tile += num_programs
+            tile += tl.num_programs(0)
+            tl.device_assert(tile > 0, "tile <= 0 (at update)")
 
         # Get ready to go to the next MM problem.
         last_mm_tile += num_tiles
+        tl.device_assert(last_mm_tile > 0, "last_mm_tile <= 0 (at update)")
         last_row += m
+        tl.device_assert(last_row > 0, "last_row <= 0 (at update)")
 
 
 def triton_gmm(
