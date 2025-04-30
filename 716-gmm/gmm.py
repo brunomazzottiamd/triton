@@ -207,7 +207,6 @@ def triton_gmm_kernel(
     stride_rhs_g: int,
     stride_rhs_k: int,
     stride_rhs_n: int,
-    stride_group_sizes_g: int,
     stride_out_m: int,
     stride_out_n: int,
     # Meta-parameters:
@@ -225,7 +224,6 @@ def triton_gmm_kernel(
     tl.assume(stride_rhs_g > 0)
     tl.assume(stride_rhs_k > 0)
     tl.assume(stride_rhs_n > 0)
-    tl.assume(stride_group_sizes_g > 0)
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
@@ -246,7 +244,7 @@ def triton_gmm_kernel(
     #   sum(m) = M
     for g in range(G):
         # Get m dimension of current MM problem.
-        m = tl.load(group_sizes_ptr + g * stride_group_sizes_g)
+        m = tl.load(group_sizes_ptr + g)
 
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
         num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
@@ -362,7 +360,6 @@ def triton_gmm(
         # Tensor strides:
         *lhs.stride(),
         *rhs.stride(),
-        *group_sizes.stride(),
         *out.stride(),
         # Meta-parameters:
         BLOCK_SIZE_M=block_size_m,
