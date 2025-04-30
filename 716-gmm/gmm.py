@@ -201,6 +201,12 @@ def is_power_of_2(x: int) -> bool:
     return (x > 0) and (x & (x - 1) == 0)
 
 
+# Tensor needs int64 support for addressing in the kernel if its size
+# in bytes is greater than the maximum int32 value (2**31 - 1).
+def int64_addr(x: Tensor) -> bool:
+    return x.element_size() * x.nelement() > 2**31 - 1
+
+
 @triton.jit
 @typing.no_type_check
 def triton_gmm_kernel(
