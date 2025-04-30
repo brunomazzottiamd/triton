@@ -40,8 +40,15 @@ def random_group_sizes(M: int, G: int, rng_seed: int | None = None) -> list[int]
     # Add 0 at the beginning and M at the end, then take differences.
     group_sizes = [b - a for a, b in zip([0] + cuts, cuts + [M])]
 
-    assert len(group_sizes) == G
-    assert sum(group_sizes) == M
+    assert (
+        len(group_sizes) == G
+    ), f"Group sizes don't have {G} elements (it's {len(group_sizes)})."
+    assert all(
+        group_size > 0 for group_size in group_sizes
+    ), "All group sizes must be positive."
+    assert (
+        sum(group_sizes) == M
+    ), f"Group sizes don't add up to {M} (it's {sum(group_sizes)})."
 
     return group_sizes
 
