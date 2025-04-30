@@ -291,8 +291,12 @@ def triton_gmm_kernel(
 
             tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
             offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            tl.device_assert(tl.min(offs_lhs_m >= 0) == 1, "offs_lhs_m < 0")
+
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
             offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            tl.device_assert(tl.min(offs_rhs_n >= 0) == 1, "offs_rhs_n < 0")
+
             offs_k = tl.arange(0, BLOCK_SIZE_K)
 
             lhs_ptrs = (
@@ -310,20 +314,25 @@ def triton_gmm_kernel(
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
             for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-                lhs = tl.load(
-                    lhs_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0
-                )
-                rhs = tl.load(
-                    rhs_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0
-                )
+                k_mask_limit = K - k * BLOCK_SIZE_K
+                tl.device_assert(k_mask_limit > 0, "k_mask_limit <= 0")
+                lhs = tl.load(lhs_ptrs, mask=offs_k[None, :] < k_mask_limit, other=0)
+                rhs = tl.load(rhs_ptrs, mask=offs_k[:, None] < k_mask_limit, other=0)
+
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
+
                 lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
                 rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
 
             acc = acc.to(out_ptr.type.element_ty)
 
+            # tile_m * BLOCK_SIZE_M >= 0 was already checked
             offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            tl.device_assert(tl.min(offs_out_m >= 0) == 1, "offs_out_m < 0")
+
+            # tile_n * BLOCK_SIZE_N >= 0 was already checked
             offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            tl.device_assert(tl.min(offs_out_n >= 0) == 1, "offs_out_n < 0")
 
             out_ptrs = (
                 out_ptr
