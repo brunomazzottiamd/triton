@@ -373,9 +373,14 @@ def triton_gmm(
     return out
 
 
-@pytest.mark.skip(
-    reason="Triton kernel isn't working for (M, K, N, G) = (10, 2, 3, 4) shape."
-)
+def dtype_from_str(dtype_str: str) -> torch.dtype:
+    dtype_str = dtype_str.strip().lower()
+    return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
+        dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
+    ]
+
+
+@pytest.mark.skip(reason="Triton kernel isn't working with fp32 input type.")
 def test_simple_gmm():
     # M, K, N, G = 10, 2, 3, 4
     group_sizes = torch.tensor([3, 2, 4, 1], dtype=torch.int32, device=DEVICE)
@@ -429,6 +434,7 @@ def test_simple_gmm():
 @pytest.mark.parametrize(
     "M, K, N, G",
     [
+        (     10,     2,     3,   4),  # same shape of test_simple_gmm
         (     32,    16,     8,   4),  # Test 1
         (    512,  4096,  2048, 160),  # Test 2
         (  49152,  1408,  2048,  64),  # deepseekv2-16B
@@ -439,14 +445,22 @@ def test_simple_gmm():
     ],
 )
 # fmt: on
-def test_gmm(M: int, K: int, N: int, G: int):
+@pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
+@pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
+def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str):
     if M == 3145728:
         pytest.skip(
-            f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} shape."
+            f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} big shape."
         )
-    lhs, rhs, group_sizes = gen_input(M, K, N, G, rng_seed=0)
-    out_torch = torch_gmm(lhs, rhs, group_sizes)
-    out_triton = triton_gmm(lhs, rhs, group_sizes)
+    in_dtype = dtype_from_str(in_dtype_str)
+    if in_dtype == torch.float32:
+        pytest.skip("Triton kernel isn't working with fp32 input type.")
+    out_dtype = dtype_from_str(out_dtype_str)
+    lhs, rhs, group_sizes = gen_input(
+        M, K, N, G, preferred_element_type=in_dtype, rng_seed=0
+    )
+    out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
