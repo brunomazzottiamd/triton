@@ -282,7 +282,7 @@ def triton_gmm_kernel(
                 rhs = tl.load(
                     rhs_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0
                 )
-                acc += tl.dot(lhs, rhs)
+                acc += tl.dot(lhs, rhs, input_precision="ieee")
                 lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
                 rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
             acc = acc.to(out_ptr.type.element_ty)
