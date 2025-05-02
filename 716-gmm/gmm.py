@@ -553,19 +553,19 @@ def test_simple_gmm():
         (    512,  4096,  2048, 160),  # Test 2
         (  49152,  1408,  2048,  64),  # deepseekv2-16B
 
-        (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
+      # (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
       # (1867775,  2048,  1408,   8),  #   (lhs => 7.12 GB, out => 4.90 GB) => segfault
       # (1857944,  2048,  1408,   8),  #   (lhs => 7.09 GB, out => 4.87 GB) => segfault
       # (1853029,  2048,  1408,   8),  #   (lhs => 7.07 GB, out => 4.86 GB) => segfault
       # (1850571,  2048,  1408,   8),  #   (lhs => 7.06 GB, out => 4.85 GB) => segfault
       # (1849342,  2048,  1408,   8),  #   (lhs => 7.05 GB, out => 4.85 GB) => segfault
-      # (1848114,  2048,  1408,   8),  #   (lhs => 7.05 GB, out => 4.85 GB) => no segfault, 34.9% mismatches
-      # (1808793,  2048,  1408,   8),  #   (lhs => 6.90 GB, out => 4.74 GB) => no segfault, 31.3% mismatches
-      # (1730150,  2048,  1408,   8),  #   (lhs => 6.60 GB, out => 4.54 GB) => no segfault, 11.8% mismatches
-      # (1525202,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 4.000001 GB) => no segfault, 0.00004% mismatches
-      # (1525201,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 3.999999 GB) => no segfault
-      # (1048577,  2048,  1408,   8),  #   (lhs => 4 GB + 4 KB, out => 2.75 GB) => no segfault
-      # (1048576,  2048,  1408,   8),  #   (lhs => 4 GB, out => 2.75 GB) => no segfault
+        (1848114,  2048,  1408,   8),  #   (lhs => 7.05 GB, out => 4.85 GB) => no segfault
+        (1808793,  2048,  1408,   8),  #   (lhs => 6.90 GB, out => 4.74 GB) => no segfault
+        (1730150,  2048,  1408,   8),  #   (lhs => 6.60 GB, out => 4.54 GB) => no segfault
+        (1525202,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 4.000001 GB) => no segfault
+        (1525201,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 3.999999 GB) => no segfault
+        (1048577,  2048,  1408,   8),  #   (lhs => 4 GB + 4 KB, out => 2.75 GB) => no segfault
+        (1048576,  2048,  1408,   8),  #   (lhs => 4 GB, out => 2.75 GB) => no segfault
 
         ( 393216,  2048,  1408,  64),  # deepseekv2-16B
         (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
@@ -576,7 +576,7 @@ def test_simple_gmm():
 @pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
 @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
 def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str):
-    if M >= 1525202:
+    if M >= 1849342:
         pytest.skip(
             f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} big shape."
         )
