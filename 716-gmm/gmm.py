@@ -10,6 +10,9 @@
 #   * out is (M, N) bf16
 
 
+# Imports.
+# ------------------------------------------------------------------------------
+
 # Python standard library
 import argparse
 import random
@@ -27,9 +30,32 @@ import triton.language as tl
 import pytest
 
 
+# Global defaults.
+# ------------------------------------------------------------------------------
+
+
 DEVICE: torch.device | str = "cuda"
 
-DTYPE: torch.dtype = torch.bfloat16
+
+def dtype_from_str(dtype_str: str) -> torch.dtype:
+    dtype_str = dtype_str.strip().lower()
+    return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
+        dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
+    ]
+
+
+DTYPE_STR: str = "bf16"
+
+
+DTYPE: torch.dtype = dtype_from_str(DTYPE_STR)
+
+
+# TODO: Figure out a sensible tiling default.
+TILING: tuple[int, int, int] = (64, 64, 64)
+
+
+# Tensor creation functions.
+# ------------------------------------------------------------------------------
 
 
 def random_group_sizes(M: int, G: int, rng_seed: int | None = None) -> list[int]:
@@ -100,6 +126,10 @@ def gen_output(
     return torch.empty((M, N), dtype=preferred_element_type, device=device)
 
 
+# Parameter checking functions.
+# ------------------------------------------------------------------------------
+
+
 def check_input_device_dtype(lhs: Tensor, rhs: Tensor, group_sizes: Tensor) -> None:
     assert (
         lhs.device == rhs.device == group_sizes.device
@@ -132,7 +162,31 @@ def shape_from_input(
     ), f"G dimension of rhs and group_sizes don't match (rhs = {rhs_g}, group_sizes = {group_sizes_g})."
     G = rhs_g
 
+    assert M > 0, "M must be positive."
+    assert K > 0, "K must be positive."
+    assert N > 0, "N must be positive."
+    assert G > 0, "G must be positive."
+
     return M, K, N, G
+
+
+def is_power_of_2(x: int) -> bool:
+    return (x > 0) and (x & (x - 1) == 0)
+
+
+def check_tiling(tiling: tuple[int, int, int]) -> tuple[int, int, int]:
+    assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
+    block_size_m, block_size_k, block_size_n = tiling
+    assert is_power_of_2(
+        block_size_m
+    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
+    assert is_power_of_2(
+        block_size_k
+    ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
+    assert is_power_of_2(
+        block_size_n
+    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
+    return tiling
 
 
 def get_output(
@@ -163,11 +217,15 @@ def get_output(
     )
 
 
+# PyTorch reference GMM implementation.
+# ------------------------------------------------------------------------------
+
+
 def torch_gmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
-    preferred_element_type: torch.dtype = torch.bfloat16,
+    preferred_element_type: torch.dtype = DTYPE,
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
@@ -191,14 +249,107 @@ def torch_gmm(
     return out
 
 
+# Kernel grid calculation.
+# ------------------------------------------------------------------------------
+
+
 def num_sms(device: torch.device | str = DEVICE) -> int:
     num_sms = torch.cuda.get_device_properties(device).multi_processor_count
     assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
     return num_sms
 
 
-def is_power_of_2(x: int) -> bool:
-    return (x > 0) and (x & (x - 1) == 0)
+def compute_grid(
+    N: int,
+    group_sizes: Tensor,
+    tiling: tuple[int, int, int] = TILING,
+    device: torch.device | str = DEVICE,
+) -> tuple[int]:
+    assert N > 0, "N must be positive."
+    block_size_m, _, block_size_n = check_tiling(tiling)
+    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
+    num_n_tiles = triton.cdiv(N, block_size_n)
+    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
+    return (min(num_sms(device=device), num_tiles),)
+
+
+# Triton GMM simulation.
+# TODO: Finish simulation logic.
+# ------------------------------------------------------------------------------
+
+
+def simulate_triton_gmm_kernel(
+    lhs: Tensor,
+    rhs: Tensor,
+    group_sizes: Tensor,
+    out: Tensor,
+    tiling: tuple[int, int, int] = TILING,
+) -> None:
+    check_input_device_dtype(lhs, rhs, group_sizes)
+    M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
+    stride_lhs_m, stride_lhs_k = lhs.stride()
+    stride_rhs_g, stride_rhs_k, stride_rhs_n = rhs.stride()
+    stride_out_m, stride_out_n = out.stride()
+    block_size_m, block_size_k, block_size_n = check_tiling(tiling)
+    num_programs = compute_grid(N, group_sizes, tiling=tiling, device=lhs.device)[0]
+
+    for program_id in range(num_programs):
+        tile = program_id
+        assert tile >= 0, "tile < 0 (at initialization)"
+
+        # Tile limit of last MM problem (inclusive).
+        last_mm_tile = 0
+
+        # Last input row of lhs and output row of out. Each group reads some rows of
+        # lhs and writes some rows to out.
+        last_row = 0
+
+        # Loop through all (m, K, N) MM problems:
+        #   (m, K) x (K, N) = (m, N)
+        #   sum(m) = M
+        for g in range(G):
+            # Get m dimension of current MM problem.
+            m = group_sizes[g]
+            assert m > 0, "m <= 0"
+
+            num_m_tiles = triton.cdiv(m, block_size_m)
+            assert num_m_tiles > 0, "num_m_tiles <= 0"
+            num_n_tiles = triton.cdiv(N, block_size_n)
+            assert num_n_tiles > 0, "num_n_tiles <= 0"
+            num_tiles = num_m_tiles * num_n_tiles
+            assert num_tiles > 0, "num_tiles <= 0"
+
+            # Loop through tiles of current MM problem.
+            while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
+                # Figure out tile coordinates in current MM problem.
+                tile_in_mm = tile - last_mm_tile
+                assert tile_in_mm >= 0, "tile_in_mm < 0"
+                tile_m = tile_in_mm // num_n_tiles
+                assert tile_m >= 0, "tile_m < 0"
+                assert tile_m < num_m_tiles, "tile_m >= num_m_tiles"
+                tile_n = tile_in_mm % num_n_tiles
+                assert tile_n >= 0, "tile_n < 0"
+                assert tile_n < num_n_tiles, "tile_n >= num_n_tiles"
+
+                # Do regular MM:
+                # TODO: Implement simulation.
+
+                # Go to the next tile by advancing number of programs.
+                tile += num_programs
+                assert tile > 0, "tile <= 0 (at update)"
+
+            # Get ready to go to the next MM problem.
+            last_mm_tile += num_tiles
+            assert last_mm_tile > 0, "last_mm_tile <= 0 (at update)"
+            last_row += m
+            assert last_row > 0, "last_row <= 0 (at update)"
+            assert last_row <= M, "last_row > M (at update)"
+
+        assert last_row == M, "last_row != M (at end)"
+
+
+# Triton GMM implementation.
+# ------------------------------------------------------------------------------
 
 
 @triton.jit
@@ -429,29 +580,13 @@ def triton_gmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
-    tiling: tuple[int, int, int] | None = None,
-    preferred_element_type: torch.dtype = torch.bfloat16,
+    tiling: tuple[int, int, int] = TILING,
+    preferred_element_type: torch.dtype = DTYPE,
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
     M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
-
-    if tiling is None:
-        # TODO: Figure out a sensible tiling default.
-        tiling = (64, 64, 64)
-
-    assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
-    block_size_m, block_size_k, block_size_n = tiling
-    assert is_power_of_2(
-        block_size_m
-    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
-    assert is_power_of_2(
-        block_size_k
-    ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
-    assert is_power_of_2(
-        block_size_n
-    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
-
+    block_size_m, block_size_k, block_size_n = check_tiling(tiling)
     out = get_output(
         M,
         N,
@@ -460,12 +595,7 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    # Compute grid.
-    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
-    num_n_tiles = triton.cdiv(N, block_size_n)
-    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
-    grid = (min(num_sms(device=lhs.device), num_tiles),)
-
+    grid = compute_grid(N, group_sizes, tiling=tiling, device=lhs.device)
     triton_gmm_kernel[grid](
         # Tensor pointers:
         lhs,
@@ -490,11 +620,8 @@ def triton_gmm(
     return out
 
 
-def dtype_from_str(dtype_str: str) -> torch.dtype:
-    dtype_str = dtype_str.strip().lower()
-    return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
-        dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
-    ]
+# Unit tests.
+# ------------------------------------------------------------------------------
 
 
 @pytest.mark.skip(reason="Triton kernel isn't working with fp32 input type.")
@@ -596,6 +723,11 @@ def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: s
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
+# Command line interface parsing.
+# TODO: Add types to command line interface.
+# ------------------------------------------------------------------------------
+
+
 def parse_args() -> argparse.Namespace:
     def positive_int(value: str) -> int:
         try:
@@ -618,6 +750,11 @@ def parse_args() -> argparse.Namespace:
         help="random seed for input generation (default: 0)",
     )
     return parser.parse_args()
+
+
+# Main function: entry point.
+# TODO: Implement benchmark.
+# ------------------------------------------------------------------------------
 
 
 def main() -> None:
