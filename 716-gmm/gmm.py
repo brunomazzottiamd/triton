@@ -246,16 +246,13 @@ def triton_gmm_kernel(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
-    # WIP: 64-bit addressing
-    OFFSETS_64BIT: tl.constexpr = True
-    if OFFSETS_64BIT:
-        stride_lhs_m = stride_lhs_m.to(tl.int64)
-        stride_lhs_k = stride_lhs_k.to(tl.int64)
-        stride_rhs_g = stride_rhs_g.to(tl.int64)
-        stride_rhs_k = stride_rhs_k.to(tl.int64)
-        stride_rhs_n = stride_rhs_n.to(tl.int64)
-        stride_out_m = stride_out_m.to(tl.int64)
-        stride_out_n = stride_out_n.to(tl.int64)
+    stride_lhs_m = stride_lhs_m.to(tl.int64)
+    stride_lhs_k = stride_lhs_k.to(tl.int64)
+    stride_rhs_g = stride_rhs_g.to(tl.int64)
+    stride_rhs_k = stride_rhs_k.to(tl.int64)
+    stride_rhs_n = stride_rhs_n.to(tl.int64)
+    stride_out_m = stride_out_m.to(tl.int64)
+    stride_out_n = stride_out_n.to(tl.int64)
 
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
@@ -299,33 +296,37 @@ def triton_gmm_kernel(
 
             tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
             offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            # offs_lhs_m = offs_lhs_m.to(tl.int64)  # WIP: 64-bit addressing
             tl.device_assert(tl.min(offs_lhs_m >= 0) == 1, "offs_lhs_m < 0")
 
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
             offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            # offs_rhs_n = offs_rhs_n.to(tl.int64)  # WIP: 64-bit addressing
             tl.device_assert(tl.min(offs_rhs_n >= 0) == 1, "offs_rhs_n < 0")
 
             offs_k = tl.arange(0, BLOCK_SIZE_K)
-            # offs_k = offs_k.to(tl.int64)  # WIP: 64-bit addressing
 
             lhs_offs_1 = (last_row + offs_lhs_m[:, None]) * stride_lhs_m
             tl.device_assert(tl.min(lhs_offs_1 >= 0) == 1, "lhs_offs_1 < 0")
+            tl.device_assert(lhs_offs_1.dtype == tl.int64, "lhs_offs_1 isn't int64")
             lhs_offs_2 = offs_k[None, :] * stride_lhs_k
             tl.device_assert(tl.min(lhs_offs_2 >= 0) == 1, "lhs_offs_2 < 0")
+            tl.device_assert(lhs_offs_2.dtype == tl.int64, "lhs_offs_2 isn't int64")
             lhs_offs_3 = lhs_offs_1 + lhs_offs_2
             tl.device_assert(tl.min(lhs_offs_3 >= 0) == 1, "lhs_offs_3 < 0")
+            tl.device_assert(lhs_offs_3.dtype == tl.int64, "lhs_offs_3 isn't int64")
             lhs_ptrs = lhs_ptr + lhs_offs_3
 
             rhs_offs_1 = g * stride_rhs_g
             tl.device_assert(rhs_offs_1 >= 0, "rhs_offs_1 < 0")
+            tl.device_assert(rhs_offs_1.dtype == tl.int64, "rhs_offs_1 isn't int64")
             rhs_offs_2 = offs_k[:, None] * stride_rhs_k
             tl.device_assert(tl.min(rhs_offs_2 >= 0) == 1, "rhs_offs_2 < 0")
+            tl.device_assert(rhs_offs_2.dtype == tl.int64, "rhs_offs_2 isn't int64")
             rhs_offs_3 = offs_rhs_n[None, :] * stride_rhs_n
             tl.device_assert(tl.min(rhs_offs_3 >= 0) == 1, "rhs_offs_3 < 0")
+            tl.device_assert(rhs_offs_3.dtype == tl.int64, "rhs_offs_3 isn't int64")
             rhs_offs_4 = rhs_offs_1 + rhs_offs_2 + rhs_offs_3
             tl.device_assert(tl.min(rhs_offs_4 >= 0) == 1, "rhs_offs_4 < 0")
+            tl.device_assert(rhs_offs_4.dtype == tl.int64, "rhs_offs_4 isn't int64")
             rhs_ptrs = rhs_ptr + rhs_offs_4
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
@@ -338,8 +339,15 @@ def triton_gmm_kernel(
 
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
-                lhs_ptrs += BLOCK_SIZE_K * stride_lhs_k
-                rhs_ptrs += BLOCK_SIZE_K * stride_rhs_k
+                lhs_step = BLOCK_SIZE_K * stride_lhs_k
+                tl.device_assert(lhs_step > 0, "lhs_step <= 0")
+                tl.device_assert(lhs_step.dtype == tl.int64, "lhs_step isn't int64")
+                lhs_ptrs += lhs_step
+
+                rhs_step = BLOCK_SIZE_K * stride_rhs_k
+                tl.device_assert(rhs_step > 0, "rhs_step <= 0")
+                tl.device_assert(rhs_step.dtype == tl.int64, "rhs_step isn't int64")
+                rhs_ptrs += rhs_step
 
             acc = acc.to(out_ptr.type.element_ty)
 
@@ -353,10 +361,13 @@ def triton_gmm_kernel(
 
             out_offs_1 = (last_row + offs_out_m[:, None]) * stride_out_m
             tl.device_assert(tl.min(out_offs_1 >= 0) == 1, "out_offs_1 < 0")
+            tl.device_assert(out_offs_1.dtype == tl.int64, "out_offs_1 isn't int64")
             out_offs_2 = offs_out_n[None, :] * stride_out_n
             tl.device_assert(tl.min(out_offs_2 >= 0) == 1, "out_offs_2 < 0")
+            tl.device_assert(out_offs_2.dtype == tl.int64, "out_offs_2 isn't int64")
             out_offs_3 = out_offs_1 + out_offs_2
             tl.device_assert(tl.min(out_offs_3 >= 0) == 1, "out_offs_3 < 0")
+            tl.device_assert(out_offs_3.dtype == tl.int64, "out_offs_3 isn't int64")
             out_ptrs = out_ptr + out_offs_3
             tl.store(
                 out_ptrs,
