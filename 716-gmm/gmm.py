@@ -575,7 +575,8 @@ def test_simple_gmm():
 # fmt: on
 @pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
 @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
-def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str):
+@pytest.mark.parametrize("rng_seed", [0, 77, 121])
+def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int):
     if M >= 1849342:
         pytest.skip(
             f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} big shape."
@@ -585,7 +586,7 @@ def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: s
         pytest.skip("Triton kernel isn't working with fp32 input type.")
     out_dtype = dtype_from_str(out_dtype_str)
     lhs, rhs, group_sizes = gen_input(
-        M, K, N, G, preferred_element_type=in_dtype, rng_seed=0
+        M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
     )
     out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
     out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
