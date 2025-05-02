@@ -420,6 +420,9 @@ def triton_gmm_kernel(
         tl.device_assert(last_mm_tile > 0, "last_mm_tile <= 0 (at update)")
         last_row += m
         tl.device_assert(last_row > 0, "last_row <= 0 (at update)")
+        tl.device_assert(last_row <= M, "last_row > M (at update)")
+
+    tl.device_assert(last_row == M, "last_row != M (at end)")
 
 
 def triton_gmm(
