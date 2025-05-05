@@ -394,11 +394,6 @@ def triton_gmm_kernel(
     tl.assume(N > 0)
     tl.assume(G > 0)
 
-    M = M.to(tl.int64)
-    K = K.to(tl.int64)
-    N = N.to(tl.int64)
-    G = G.to(tl.int64)
-
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
     tl.assume(stride_rhs_g > 0)
@@ -416,30 +411,27 @@ def triton_gmm_kernel(
     stride_out_n = stride_out_n.to(tl.int64)
 
     # Current tile. Each program computes multiple tiles of each group.
-    tile = tl.program_id(0).to(tl.int64)
+    tile = tl.program_id(0)
     tl.device_assert(tile >= 0, "tile < 0 (at initialization)")
 
     # Tile limit of last MM problem (inclusive).
-    zero = 0
-    last_mm_tile = zero.to(tl.int64)
+    last_mm_tile = 0
 
     # Last input row of lhs and output row of out. Each group reads some rows of
     # lhs and writes some rows to out.
-    last_row = zero.to(tl.int64)
+    last_row = 0
 
     # Loop through all (m, K, N) MM problems:
     #   (m, K) x (K, N) = (m, N)
     #   sum(m) = M
-    for gg in range(G):
-        g = gg.to(tl.int64)
-
+    for g in range(G):
         # Get m dimension of current MM problem.
-        m = tl.load(group_sizes_ptr + g).to(tl.int64)
+        m = tl.load(group_sizes_ptr + g)
         tl.device_assert(m > 0, "m <= 0")
 
-        num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M).to(tl.int64)
+        num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
         tl.device_assert(num_m_tiles > 0, "num_m_tiles <= 0")
-        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N).to(tl.int64)
+        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
         tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
         num_tiles = num_m_tiles * num_n_tiles
         tl.device_assert(num_tiles > 0, "num_tiles <= 0")
@@ -578,7 +570,7 @@ def triton_gmm_kernel(
             )
 
             # Go to the next tile by advancing number of programs.
-            tile += tl.num_programs(0).to(tl.int64)
+            tile += tl.num_programs(0)
             tl.device_assert(tile > 0, "tile <= 0 (at update)")
 
         # Get ready to go to the next MM problem.
