@@ -162,10 +162,10 @@ def shape_from_input(
     ), f"G dimension of rhs and group_sizes don't match (rhs = {rhs_g}, group_sizes = {group_sizes_g})."
     G = rhs_g
 
-    assert M > 0, "M must be positive."
-    assert K > 0, "K must be positive."
-    assert N > 0, "N must be positive."
-    assert G > 0, "G must be positive."
+    assert M > 0, f"M must be positive, it's {M}."
+    assert K > 0, f"K must be positive, it's {K}."
+    assert N > 0, f"N must be positive, it's {N}"
+    assert G > 0, f"G must be positive, it's {G}"
 
     return M, K, N, G
 
@@ -261,16 +261,27 @@ def num_sms(device: torch.device | str = DEVICE) -> int:
 
 def compute_grid(
     N: int,
+    block_size_m: int,
+    block_size_n: int,
     group_sizes: Tensor,
-    tiling: tuple[int, int, int] = TILING,
-    device: torch.device | str = DEVICE,
 ) -> tuple[int]:
-    assert N > 0, "N must be positive."
-    block_size_m, _, block_size_n = check_tiling(tiling)
+    assert N > 0, f"N must be positive, it's {N}."
+    assert is_power_of_2(
+        block_size_m
+    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
+    assert is_power_of_2(
+        block_size_n
+    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
+    assert torch.all(group_sizes > 0).item(), "All group_sizes must be positive."
     num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
+    assert torch.all(num_m_tiles > 0).item(), "All num_m_tiles must be positive."
     num_n_tiles = triton.cdiv(N, block_size_n)
+    assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
     num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
-    return (int(min(num_sms(device=device), num_tiles)),)
+    assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
+    num_programs = int(min(num_sms(device=group_sizes.device), num_tiles))
+    assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
+    return (num_programs,)
 
 
 # Triton GMM simulation.
@@ -291,7 +302,7 @@ def simulate_triton_gmm_kernel(
     stride_rhs_g, stride_rhs_k, stride_rhs_n = rhs.stride()
     stride_out_m, stride_out_n = out.stride()
     block_size_m, block_size_k, block_size_n = check_tiling(tiling)
-    num_programs = compute_grid(N, group_sizes, tiling=tiling, device=lhs.device)[0]
+    num_programs = compute_grid(N, block_size_m, block_size_n, group_sizes)[0]
 
     for program_id in range(num_programs):
         tile = program_id
@@ -599,7 +610,7 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    grid = compute_grid(N, group_sizes, tiling=tiling, device=lhs.device)
+    grid = compute_grid(N, block_size_m, block_size_n, group_sizes)
     triton_gmm_kernel[grid](
         # Tensor pointers:
         lhs,
