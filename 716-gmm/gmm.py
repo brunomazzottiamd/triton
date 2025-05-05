@@ -396,7 +396,7 @@ def triton_gmm_kernel(
             )
             offs_k = tl.arange(0, BLOCK_SIZE_K)
 
-            lhs_offs_0 = last_row.to(stride_lhs_type) + offs_lhs_m[:, None]
+            lhs_offs_0 = last_row + offs_lhs_m[:, None]
             tl.device_assert(
                 lhs_offs_0.dtype == stride_lhs_type, "wrong lhs_offs_0 type"
             )
@@ -470,7 +470,7 @@ def triton_gmm_kernel(
                 offs_out_n.dtype == stride_out_type, "wrong offs_out_n type"
             )
 
-            out_offs_0 = last_row.to(stride_out_type) + offs_out_m[:, None]
+            out_offs_0 = last_row + offs_out_m[:, None]
             tl.device_assert(
                 out_offs_0.dtype == stride_out_type, "wrong out_offs_0 type"
             )
