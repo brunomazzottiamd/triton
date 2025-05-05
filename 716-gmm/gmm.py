@@ -298,7 +298,7 @@ def simulate_triton_gmm_kernel(
 ) -> None:
     def check_range(desc: str, x: int | Tensor, bits: int = 32):
         assert is_power_of_2(bits), f"Bit width must be a power of 2, it's {bits}."
-        limit = 2 ** (bits - 1) - 1
+        limit = 2 ** (bits - 1)
         if isinstance(x, int):
             assert x >= 0, f"{desc} is < 0"
             assert x < limit, f"{desc} is >= max {bits}-bit value"
@@ -307,12 +307,39 @@ def simulate_triton_gmm_kernel(
             assert torch.all(x >= 0).item(), f"{desc} is < 0"
             assert torch.all(x < limit).item(), f"{desc} is >= max {bits}-bit value"
 
+    def tl_arange(start: int, end: int):
+        assert start == 0 or is_power_of_2(
+            start
+        ), f"start must be a power of 2 (it's {start})."
+        assert end == 0 or is_power_of_2(end), f"end must be a power of 2 (it's {end})."
+        assert end > start, f"end <= start (start = {start}, end = {end})"
+        return torch.arange(start, end, dtype=torch.int64, device="cpu")
+
     check_input_device_dtype(lhs, rhs, group_sizes)
+
     M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
+    check_range("M", M)
+    check_range("K", K)
+    check_range("N", N)
+    check_range("G", G)
+
     stride_lhs_m, stride_lhs_k = lhs.stride()
+    check_range("stride_lhs_m", stride_lhs_m, bits=64)
+    check_range("stride_lhs_k", stride_lhs_k, bits=64)
+
     stride_rhs_g, stride_rhs_k, stride_rhs_n = rhs.stride()
+    check_range("stride_rhs_g", stride_rhs_g, bits=64)
+    check_range("stride_rhs_k", stride_rhs_k, bits=64)
+    check_range("stride_rhs_n", stride_rhs_n, bits=64)
+
     stride_out_m, stride_out_n = out.stride()
+    check_range("stride_out_m", stride_out_m, bits=64)
+    check_range("stride_out_n", stride_out_n, bits=64)
+
     block_size_m, block_size_k, block_size_n = check_tiling(tiling)
+    block_m_range = tl_arange(0, block_size_m)
+    check_range("tl_arange(0, block_size_m)", block_m_range)
+
     num_programs = compute_grid(N, block_size_m, block_size_n, group_sizes)[0]
 
     for program_id in range(num_programs):
@@ -349,13 +376,20 @@ def simulate_triton_gmm_kernel(
                 tile_in_mm = tile - last_mm_tile
                 check_range("tile_in_mm", tile_in_mm)
                 tile_m = tile_in_mm // num_n_tiles
-                assert tile_m >= 0, "tile_m < 0"
                 check_range("tile_m", tile_m)
+                assert tile_m < num_m_tiles, "tile_m >= num_m_tiles"
                 tile_n = tile_in_mm % num_n_tiles
                 check_range("tile_n", tile_n)
+                assert tile_n < num_n_tiles, "tile_n >= num_n_tiles"
 
                 # Do regular MM:
-                # TODO: Implement simulation.
+
+                check_range("tile_m * block_size_m", tile_m * block_size_m)
+                offs_lhs_m = tile_m * block_size_m + block_m_range
+                check_range("offs_lhs_m (before modulus)", offs_lhs_m)
+                offs_lhs_m = offs_lhs_m % m
+                check_range("offs_lhs_m (after modulus)", offs_lhs_m)
+                assert torch.all(offs_lhs_m < m).item(), "offs_lhs_m >= m"
 
                 # Go to the next tile by advancing number of programs.
                 tile += num_programs
