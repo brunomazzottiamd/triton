@@ -448,11 +448,15 @@ def triton_gmm_kernel(
             # Do regular MM:
 
             tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
-            offs_lhs_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+            offs_lhs_m = (
+                tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+            ) % m
             tl.device_assert(tl.min(offs_lhs_m >= 0) == 1, "offs_lhs_m < 0")
 
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
-            offs_rhs_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)
+            offs_rhs_n = (
+                tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)
+            ) % N
             tl.device_assert(tl.min(offs_rhs_n >= 0) == 1, "offs_rhs_n < 0")
 
             offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
@@ -683,19 +687,19 @@ def test_simple_gmm():
         (    512,  4096,  2048, 160),  # Test 2
         (  49152,  1408,  2048,  64),  # deepseekv2-16B
 
-      # (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! Getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
-      # (1867775,  2048,  1408,   8),  #   (lhs => 7.12 GB, out => 4.90 GB) => segfault
-      # (1857944,  2048,  1408,   8),  #   (lhs => 7.09 GB, out => 4.87 GB) => segfault
-      # (1853029,  2048,  1408,   8),  #   (lhs => 7.07 GB, out => 4.86 GB) => segfault
-      # (1850571,  2048,  1408,   8),  #   (lhs => 7.06 GB, out => 4.85 GB) => segfault
-      # (1849342,  2048,  1408,   8),  #   (lhs => 7.05 GB, out => 4.85 GB) => segfault
-        (1848114,  2048,  1408,   8),  #   (lhs => 7.05 GB, out => 4.85 GB) => no segfault
-        (1808793,  2048,  1408,   8),  #   (lhs => 6.90 GB, out => 4.74 GB) => no segfault
-        (1730150,  2048,  1408,   8),  #   (lhs => 6.60 GB, out => 4.54 GB) => no segfault
-        (1525202,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 4.000001 GB) => no segfault
-        (1525201,  2048,  1408,   8),  #   (lhs => 5.82 GB, out => 3.999999 GB) => no segfault
-        (1048577,  2048,  1408,   8),  #   (lhs => 4 GB + 4 KB, out => 2.75 GB) => no segfault
-        (1048576,  2048,  1408,   8),  #   (lhs => 4 GB, out => 2.75 GB) => no segfault
+        (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
+      # (1867775,  2048,  1408,   8),  #   lhs => 7.12 GB, out => 4.90 GB
+      # (1857944,  2048,  1408,   8),  #   lhs => 7.09 GB, out => 4.87 GB
+      # (1853029,  2048,  1408,   8),  #   lhs => 7.07 GB, out => 4.86 GB
+      # (1850571,  2048,  1408,   8),  #   lhs => 7.06 GB, out => 4.85 GB
+      # (1849342,  2048,  1408,   8),  #   lhs => 7.05 GB, out => 4.85 GB
+      # (1848114,  2048,  1408,   8),  #   lhs => 7.05 GB, out => 4.85 GB
+      # (1808793,  2048,  1408,   8),  #   lhs => 6.90 GB, out => 4.74 GB
+      # (1730150,  2048,  1408,   8),  #   lhs => 6.60 GB, out => 4.54 GB
+      # (1525202,  2048,  1408,   8),  #   lhs => 5.82 GB, out => 4.000001 GB
+      # (1525201,  2048,  1408,   8),  #   lhs => 5.82 GB, out => 3.999999 GB
+      # (1048577,  2048,  1408,   8),  #   lhs => 4 GB + 4 KB, out => 2.75 GB
+      # (1048576,  2048,  1408,   8),  #   lhs => 4 GB, out => 2.75 GB
 
         ( 393216,  2048,  1408,  64),  # deepseekv2-16B
         (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
@@ -707,10 +711,6 @@ def test_simple_gmm():
 @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
 @pytest.mark.parametrize("rng_seed", [0, 77, 121])
 def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int):
-    if M >= 1849342:
-        pytest.skip(
-            f"Triton kernel isn't working for (M, K, N, G) = {(M, K, N, G)} big shape."
-        )
     in_dtype = dtype_from_str(in_dtype_str)
     if in_dtype == torch.float32:
         pytest.skip("Triton kernel isn't working with fp32 input type.")
