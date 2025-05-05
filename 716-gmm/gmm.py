@@ -556,6 +556,28 @@ def triton_gmm(
 # ------------------------------------------------------------------------------
 
 
+# GMM shapes used only for test purposes,
+# fmt: off
+TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
+    ( 10,    2,    3,   4),  # same shape of test_simple_gmm
+    ( 32,   16,    8,   4),  # Test 1
+    (512, 4096, 2048, 160),  # Test 2
+]
+# fmt: on
+
+
+# Real GMM shapes, used by real models.
+# fmt: off
+REAL_SHAPES: list[tuple[int, int, int, int]] = [
+    (  49152,  1408,  2048,  64),  # deepseekv2-16B
+    (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
+    ( 393216,  2048,  1408,  64),  # deepseekv2-16B
+    (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
+    (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
+]
+# fmt: on
+
+
 @pytest.mark.skip(reason="Triton kernel isn't working with fp32 input type.")
 def test_simple_gmm():
     # M, K, N, G = 10, 2, 3, 4
@@ -606,25 +628,13 @@ def test_simple_gmm():
     torch.testing.assert_close(expected_out, out_triton)
 
 
-# fmt: off
-@pytest.mark.parametrize(
-    "M, K, N, G",
-    [
-        (     10,     2,     3,   4),  # same shape of test_simple_gmm
-        (     32,    16,     8,   4),  # Test 1
-        (    512,  4096,  2048, 160),  # Test 2
-        (  49152,  1408,  2048,  64),  # deepseekv2-16B
-        (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
-        ( 393216,  2048,  1408,  64),  # deepseekv2-16B
-        (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
-        (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
-    ],
-)
-# fmt: on
+@pytest.mark.parametrize("M, K, N, G", TEST_ONLY_SHAPES + REAL_SHAPES)
 @pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
 @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
 @pytest.mark.parametrize("rng_seed", [0, 77, 121])
-def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int):
+def test_gmm(
+    M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int
+):
     in_dtype = dtype_from_str(in_dtype_str)
     if in_dtype == torch.float32:
         pytest.skip("Triton kernel isn't working with fp32 input type.")
