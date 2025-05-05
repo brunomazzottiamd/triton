@@ -533,8 +533,18 @@ def triton_gmm_kernel(
             tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
 
-            offs_lhs_m = (tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % m
-            offs_rhs_n = (tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+            offs_lhs_m = (
+                tile_m.to(stride_lhs_type) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            ) % m
+            tl.device_assert(
+                offs_lhs_m.dtype == stride_lhs_type, "wrong offs_lhs_m type"
+            )
+            offs_rhs_n = (
+                tile_n.to(stride_rhs_type) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            ) % N
+            tl.device_assert(
+                offs_rhs_n.dtype == stride_lhs_type, "wrong offs_rhs_n type"
+            )
             offs_k = tl.arange(0, BLOCK_SIZE_K)
 
             lhs_offs_0 = last_row.to(stride_lhs_type) + offs_lhs_m[:, None]
@@ -598,33 +608,37 @@ def triton_gmm_kernel(
 
             acc = acc.to(out_ptr.type.element_ty)
 
-            offs_out_m = tile_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
-            tl.device_assert(tl.min(offs_out_m >= 0) == 1, "offs_out_m < 0")
+            offs_out_m = tile_m.to(stride_out_type) * BLOCK_SIZE_M + tl.arange(
+                0, BLOCK_SIZE_M
+            )
+            tl.device_assert(
+                offs_out_m.dtype == stride_out_type, "wrong offs_out_m type"
+            )
+            offs_out_n = tile_n.to(stride_out_type) * BLOCK_SIZE_N + tl.arange(
+                0, BLOCK_SIZE_N
+            )
+            tl.device_assert(
+                offs_out_n.dtype == stride_out_type, "wrong offs_out_n type"
+            )
 
-            offs_out_n = tile_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)
-            tl.device_assert(tl.min(offs_out_n >= 0) == 1, "offs_out_n < 0")
-
-            out_offs_0 = last_row + offs_out_m[:, None]
-            tl.device_assert(tl.min(out_offs_0 >= 0) == 1, "out_offs_0 < 0")
+            out_offs_0 = last_row.to(stride_out_type) + offs_out_m[:, None]
             tl.device_assert(
                 out_offs_0.dtype == stride_out_type, "wrong out_offs_0 type"
             )
             out_offs_1 = out_offs_0 * stride_out_m
-            tl.device_assert(tl.min(out_offs_1 >= 0) == 1, "out_offs_1 < 0")
             tl.device_assert(
-                out_offs_1.dtype == stride_out_m.dtype, "wrong out_offs_1 type"
+                out_offs_1.dtype == stride_out_type, "wrong out_offs_1 type"
             )
             out_offs_2 = offs_out_n[None, :] * stride_out_n
-            tl.device_assert(tl.min(out_offs_2 >= 0) == 1, "out_offs_2 < 0")
             tl.device_assert(
-                out_offs_2.dtype == stride_out_n.dtype, "wrong out_offs_2 type"
+                out_offs_2.dtype == stride_out_type, "wrong out_offs_2 type"
             )
             out_offs_3 = out_offs_1 + out_offs_2
-            tl.device_assert(tl.min(out_offs_3 >= 0) == 1, "out_offs_3 < 0")
             tl.device_assert(
-                out_offs_3.dtype == stride_out_m.dtype, "wrong out_offs_3 type"
+                out_offs_3.dtype == stride_out_type, "wrong out_offs_3 type"
             )
             out_ptrs = out_ptr + out_offs_3
+
             tl.store(
                 out_ptrs,
                 acc,
