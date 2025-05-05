@@ -34,20 +34,37 @@ import pytest
 # ------------------------------------------------------------------------------
 
 
+# Default device.
 DEVICE: torch.device | str = "cuda"
 
 
+# Supported data types, as strings.
+SUPPORTED_DTYPES_STR: set[str] = {"fp16", "bf16", "fp32"}
+
+
+# Convert string data type to PyTorch data type.
 def dtype_from_str(dtype_str: str) -> torch.dtype:
     dtype_str = dtype_str.strip().lower()
+    dtype_str = dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
+    assert (
+        dtype_str in SUPPORTED_DTYPES_STR
+    ), "String data type isn't in set of supported strig data types."
     return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
-        dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
+        dtype_str
     ]
 
 
+# Default data type, as string.
 DTYPE_STR: str = "bf16"
-
-
+assert (
+    DTYPE_STR in SUPPORTED_DTYPES_STR
+), "Default string data type isn't in set of supported strig data types."
+# Default data type, as PyTorch type.
 DTYPE: torch.dtype = dtype_from_str(DTYPE_STR)
+
+
+# Default RNG seed for input generation.
+RNG_SEED: int = 0
 
 
 # TODO: Figure out a sensible tiling default.
@@ -58,13 +75,12 @@ TILING: tuple[int, int, int] = (64, 64, 64)
 # ------------------------------------------------------------------------------
 
 
-def random_group_sizes(M: int, G: int, rng_seed: int | None = None) -> list[int]:
+def random_group_sizes(M: int, G: int, rng_seed: int = RNG_SEED) -> list[int]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert G > 0, f"Number of groups G must be positive (G = {G})."
     assert G <= M, f"Cannot split M into more than M groups (M = {M}, G = {G})."
 
-    if rng_seed is not None:
-        random.seed(rng_seed)
+    random.seed(rng_seed)
 
     # Generate G - 1 sorted cut points between 1 and M - 1.
     cuts = sorted(random.sample(range(1, M), G - 1))
@@ -91,15 +107,14 @@ def gen_input(
     G: int,
     device: torch.device | str = DEVICE,
     preferred_element_type: torch.dtype = DTYPE,
-    rng_seed: int | None = None,
+    rng_seed: int = RNG_SEED,
 ) -> tuple[Tensor, Tensor, Tensor]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
     assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert G > 0, f"Number of groups G must be positive (G = {G})."
 
-    if rng_seed is not None:
-        torch.manual_seed(rng_seed)
+    torch.manual_seed(rng_seed)
 
     lhs = torch.randn((M, K), dtype=torch.float32, device=device).to(
         preferred_element_type
@@ -629,8 +644,12 @@ def test_simple_gmm():
 
 
 @pytest.mark.parametrize("M, K, N, G", TEST_ONLY_SHAPES + REAL_SHAPES)
-@pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
-@pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
+@pytest.mark.parametrize(
+    "in_dtype_str", {"i" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
+)
+@pytest.mark.parametrize(
+    "out_dtype_str", {"o" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
+)
 @pytest.mark.parametrize("rng_seed", [0, 77, 121])
 def test_gmm(
     M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int
@@ -647,8 +666,27 @@ def test_gmm(
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
+# Standalone kernel runner.
+# It's useful for `rocprof` profiling and collecting ATT traces.
+# ------------------------------------------------------------------------------
+
+
+def run_triton_gmm(
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    in_dtype: torch.dtype = DTYPE,
+    out_dtype: torch.dtype = DTYPE,
+    rng_seed: int = RNG_SEED,
+) -> None:
+    lhs, rhs, group_sizes = gen_input(
+        M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
+    )
+    triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+
+
 # Command line interface parsing.
-# TODO: Add types to command line interface.
 # ------------------------------------------------------------------------------
 
 
@@ -668,10 +706,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("N", type=positive_int, help="number of columns")
     parser.add_argument("G", type=positive_int, help="number of groups")
     parser.add_argument(
+        "--input-type",
+        choices=SUPPORTED_DTYPES_STR,
+        default=DTYPE_STR,
+        help=f"input data type (default: {DTYPE_STR})",
+    )
+    parser.add_argument(
+        "--output-type",
+        choices=SUPPORTED_DTYPES_STR,
+        default=DTYPE_STR,
+        help=f"output data type (default: {DTYPE_STR})",
+    )
+    parser.add_argument(
         "--rng-seed",
         type=int,
-        default=0,
-        help="random seed for input generation (default: 0)",
+        default=RNG_SEED,
+        help=f"random seed for input generation (default: {RNG_SEED})",
     )
     return parser.parse_args()
 
@@ -683,10 +733,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    lhs, rhs, group_sizes = gen_input(
-        args.M, args.K, args.N, args.G, rng_seed=args.rng_seed
+    run_triton_gmm(
+        args.M,
+        args.K,
+        args.N,
+        args.G,
+        in_dtype=args.input_type,
+        out_dtype=args.output_type,
+        rng_seed=args.rng_seed,
     )
-    triton_gmm(lhs, rhs, group_sizes)
 
 
 if __name__ == "__main__":
