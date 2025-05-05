@@ -75,12 +75,15 @@ TILING: tuple[int, int, int] = (64, 64, 64)
 # ------------------------------------------------------------------------------
 
 
-def random_group_sizes(M: int, G: int, rng_seed: int = RNG_SEED) -> list[int]:
+def random_group_sizes(
+    M: int, G: int, device: torch.device | str = DEVICE, rng_seed: int | None = RNG_SEED
+) -> Tensor:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert G > 0, f"Number of groups G must be positive (G = {G})."
     assert G <= M, f"Cannot split M into more than M groups (M = {M}, G = {G})."
 
-    random.seed(rng_seed)
+    if rng_seed is not None:
+        random.seed(rng_seed)
 
     # Generate G - 1 sorted cut points between 1 and M - 1.
     cuts = sorted(random.sample(range(1, M), G - 1))
@@ -97,7 +100,7 @@ def random_group_sizes(M: int, G: int, rng_seed: int = RNG_SEED) -> list[int]:
         sum(group_sizes) == M
     ), f"Group sizes don't add up to {M} (it's {sum(group_sizes)})."
 
-    return group_sizes
+    return torch.tensor(group_sizes, dtype=torch.int32, device=device)
 
 
 def gen_input(
@@ -107,14 +110,15 @@ def gen_input(
     G: int,
     device: torch.device | str = DEVICE,
     preferred_element_type: torch.dtype = DTYPE,
-    rng_seed: int = RNG_SEED,
+    rng_seed: int | None = RNG_SEED,
 ) -> tuple[Tensor, Tensor, Tensor]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
     assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert G > 0, f"Number of groups G must be positive (G = {G})."
 
-    torch.manual_seed(rng_seed)
+    if rng_seed is not None:
+        torch.manual_seed(rng_seed)
 
     lhs = torch.randn((M, K), dtype=torch.float32, device=device).to(
         preferred_element_type
@@ -122,9 +126,7 @@ def gen_input(
     rhs = torch.randn((G, K, N), dtype=torch.float32, device=device).to(
         preferred_element_type
     )
-    group_sizes = torch.tensor(
-        random_group_sizes(M, G, rng_seed=rng_seed), dtype=torch.int32, device=device
-    )
+    group_sizes = random_group_sizes(M, G, device=device, rng_seed=rng_seed)
 
     return lhs, rhs, group_sizes
 
