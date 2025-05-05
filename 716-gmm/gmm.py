@@ -48,17 +48,30 @@ def dtype_from_str(dtype_str: str) -> torch.dtype:
     dtype_str = dtype_str[1:] if dtype_str[0] in {"i", "o"} else dtype_str
     assert (
         dtype_str in SUPPORTED_DTYPES_STR
-    ), "String data type isn't in set of supported strig data types."
+    ), "String data type isn't in set of supported string data types."
     return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
         dtype_str
     ]
+
+
+# Supported data types, as PyTorch types.
+SUPPORTED_DTYPES: set[torch.dtype] = {
+    dtype_from_str(dtype_str) for dtype_str in SUPPORTED_DTYPES_STR
+}
+
+
+def str_from_dtype(dtype: torch.dtype) -> str:
+    assert (
+        dtype in SUPPORTED_DTYPES
+    ), "PyTorch data type isn't in set of supported PyTorch data types."
+    return {torch.float32: "fp32", torch.float16: "fp16", torch.bfloat16: "bf16"}[dtype]
 
 
 # Default data type, as string.
 DTYPE_STR: str = "bf16"
 assert (
     DTYPE_STR in SUPPORTED_DTYPES_STR
-), "Default string data type isn't in set of supported strig data types."
+), "Default string data type isn't in set of supported string data types."
 # Default data type, as PyTorch type.
 DTYPE: torch.dtype = dtype_from_str(DTYPE_STR)
 
@@ -668,6 +681,87 @@ def test_gmm(
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
+# Benchmark.
+# ------------------------------------------------------------------------------
+
+
+def benchmark_triton_gmm(
+    target_shape: tuple[int, int, int, int] | None = None,
+    in_dtype: torch.dtype = DTYPE,
+    out_dtype: torch.dtype = DTYPE,
+    rng_seed: int = RNG_SEED,
+) -> None:
+    in_dtype_str = str_from_dtype(in_dtype)
+    out_dtype_str = str_from_dtype(out_dtype)
+    dtypes_desc = f"i{in_dtype_str}_o{out_dtype_str}"
+    triton_provider = f"triton_{dtypes_desc}"
+
+    @triton.testing.perf_report(
+        triton.testing.Benchmark(
+            x_names=["M", "K", "N", "G"],
+            x_vals=[target_shape] if target_shape is not None else REAL_SHAPES,
+            line_arg="provider",
+            line_vals=[triton_provider],
+            line_names=[triton_provider],
+            plot_name=f"triton_gmm_perf_{dtypes_desc}",
+            args={},
+            ylabel="TFLOPS",
+        )
+    )
+    def benchmark(M: int, K: int, N: int, G: int, provider: str):
+        assert "triton" in provider, f"GMM provider isn't triton, it's {provider}."
+
+        print(f"\t\t(M, K, N, G) = {(M, K, N, G)}")
+
+        lhs, rhs, group_sizes_0 = gen_input(
+            M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
+        )
+        out = gen_output(M, N, preferred_element_type=out_dtype)
+
+        distinct_group_sizes = 10
+        group_sizes = [group_sizes_0] + [
+            random_group_sizes(M, G, rng_seed=None)
+            for _ in range(distinct_group_sizes - 1)
+        ]
+        assert (
+            len(group_sizes) == distinct_group_sizes
+        ), f"Expecting {distinct_group_sizes} distinct group sizes."
+
+        quantiles = [0.5, 0.2, 0.8]
+        p50_s_sum = 0.0
+        p20_s_sum = 0.0
+        p80_s_sum = 0.0
+        tops_sum = 0.0
+
+        for group_sizes_g in group_sizes:
+            print(f"\t\t\tgroup_sizes = {group_sizes_g[:8].tolist()}")
+
+            p50_ms, p20_ms, p80_ms = triton.testing.do_bench(
+                lambda: triton_gmm(
+                    lhs,
+                    rhs,
+                    group_sizes_g,
+                    preferred_element_type=out_dtype,
+                    existing_out=out,
+                ),
+                quantiles=quantiles,
+            )
+            p50_s_sum += p50_ms * 1e-3
+            p20_s_sum += p20_ms * 1e-3
+            p80_s_sum += p80_ms * 1e-3
+            tops_sum += torch.sum(1e-12 * group_sizes_g * N * (K + (K - 1))).item()
+
+        p50_tflops = tops_sum / p50_s_sum
+        p20_tflops = tops_sum / p20_s_sum
+        p80_tflops = tops_sum / p80_s_sum
+        return p50_tflops, p80_tflops, p20_tflops
+
+    print(
+        f"Benchmarking...\n\tinput_type = {in_dtype_str}, output_type = {out_dtype_str}"
+    )
+    benchmark.run(show_plots=False, print_data=True)
+
+
 # Standalone kernel runner.
 # It's useful for `rocprof` profiling and collecting ATT traces.
 # ------------------------------------------------------------------------------
@@ -735,15 +829,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    in_dtype = dtype_from_str(args.input_type)
+    out_dtype = dtype_from_str(args.output_type)
+
     run_triton_gmm(
         args.M,
         args.K,
         args.N,
         args.G,
-        in_dtype=args.input_type,
-        out_dtype=args.output_type,
+        in_dtype=in_dtype,
+        out_dtype=out_dtype,
         rng_seed=args.rng_seed,
     )
+
+    # benchmark_triton_gmm(in_dtype=in_dtype, out_dtype=out_dtype, rng_seed=args.rng_seed)
 
 
 if __name__ == "__main__":
