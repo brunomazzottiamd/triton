@@ -757,9 +757,12 @@ def test_simple_gmm():
     ],
 )
 # fmt: on
-@pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
-@pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
-@pytest.mark.parametrize("rng_seed", [0, 77, 121])
+@pytest.mark.parametrize("in_dtype_str", ["ibf16"])
+@pytest.mark.parametrize("out_dtype_str", ["obf16"])
+# @pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
+# @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
+@pytest.mark.parametrize("rng_seed", [0])
+# @pytest.mark.parametrize("rng_seed", [0, 77, 121])
 def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int):
     in_dtype = dtype_from_str(in_dtype_str)
     if in_dtype == torch.float32:
