@@ -284,157 +284,6 @@ def compute_grid(
     return (num_programs,)
 
 
-# Triton GMM simulation.
-# TODO: Finish simulation logic.
-# ------------------------------------------------------------------------------
-
-
-def simulate_triton_gmm_kernel(
-    lhs: Tensor,
-    rhs: Tensor,
-    group_sizes: Tensor,
-    out: Tensor,
-    tiling: tuple[int, int, int] = TILING,
-) -> None:
-    def check_range(desc: str, x: int | Tensor, bits: int = 32):
-        assert is_power_of_2(bits), f"Bit width must be a power of 2, it's {bits}."
-        limit = 2 ** (bits - 1)
-        if isinstance(x, int):
-            assert x >= 0, f"{desc} is < 0"
-            assert x < limit, f"{desc} is >= max {bits}-bit value"
-        else:
-            assert isinstance(x, Tensor)
-            assert torch.all(x >= 0).item(), f"{desc} is < 0"
-            assert torch.all(x < limit).item(), f"{desc} is >= max {bits}-bit value"
-
-    def tl_arange(start: int, end: int):
-        assert start == 0 or is_power_of_2(
-            start
-        ), f"start must be a power of 2 (it's {start})."
-        assert end == 0 or is_power_of_2(end), f"end must be a power of 2 (it's {end})."
-        assert end > start, f"end <= start (start = {start}, end = {end})"
-        return torch.arange(start, end, dtype=torch.int64, device="cpu")
-
-    check_input_device_dtype(lhs, rhs, group_sizes)
-
-    M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
-    check_range("M", M)
-    check_range("K", K)
-    check_range("N", N)
-    check_range("G", G)
-
-    stride_lhs_m, stride_lhs_k = lhs.stride()
-    check_range("stride_lhs_m", stride_lhs_m, bits=64)
-    check_range("stride_lhs_k", stride_lhs_k, bits=64)
-
-    stride_rhs_g, stride_rhs_k, stride_rhs_n = rhs.stride()
-    check_range("stride_rhs_g", stride_rhs_g, bits=64)
-    check_range("stride_rhs_k", stride_rhs_k, bits=64)
-    check_range("stride_rhs_n", stride_rhs_n, bits=64)
-
-    stride_out_m, stride_out_n = out.stride()
-    check_range("stride_out_m", stride_out_m, bits=64)
-    check_range("stride_out_n", stride_out_n, bits=64)
-
-    block_size_m, block_size_k, block_size_n = check_tiling(tiling)
-    block_m_range = tl_arange(0, block_size_m)
-    check_range("tl_arange(0, block_size_m)", block_m_range)
-    block_k_range = tl_arange(0, block_size_k)
-    check_range("tl_arange(0, block_size_k)", block_k_range)
-    offs_k = block_k_range
-    block_n_range = tl_arange(0, block_size_n)
-    check_range("tl_arange(0, block_size_m)", block_n_range)
-
-    num_programs = compute_grid(N, block_size_m, block_size_n, group_sizes)[0]
-
-    for program_id in range(num_programs):
-        tile = program_id
-        check_range("tile (at initialization)", tile)
-
-        # Tile limit of last MM problem (inclusive).
-        last_mm_tile = 0
-        check_range("last_mm_tile (at initialization)", last_mm_tile)
-
-        # Last input row of lhs and output row of out. Each group reads some rows of
-        # lhs and writes some rows to out.
-        last_row = 0
-        check_range("last_row (at initialization)", last_row)
-
-        # Loop through all (m, K, N) MM problems:
-        #   (m, K) x (K, N) = (m, N)
-        #   sum(m) = M
-        for g in range(G):
-            # Get m dimension of current MM problem.
-            m = int(group_sizes[g].item())
-            check_range("m", m)
-
-            num_m_tiles = triton.cdiv(m, block_size_m)
-            check_range("num_m_tiles", num_m_tiles)
-            num_n_tiles = triton.cdiv(N, block_size_n)
-            check_range("num_n_tiles", num_n_tiles)
-            num_tiles = num_m_tiles * num_n_tiles
-            check_range("num_tiles", num_tiles)
-
-            # Loop through tiles of current MM problem.
-            while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
-                # Figure out tile coordinates in current MM problem.
-                tile_in_mm = tile - last_mm_tile
-                check_range("tile_in_mm", tile_in_mm)
-                tile_m = tile_in_mm // num_n_tiles
-                check_range("tile_m", tile_m)
-                assert tile_m < num_m_tiles, "tile_m >= num_m_tiles"
-                tile_n = tile_in_mm % num_n_tiles
-                check_range("tile_n", tile_n)
-                assert tile_n < num_n_tiles, "tile_n >= num_n_tiles"
-
-                # Do regular MM:
-
-                check_range("tile_m * block_size_m", tile_m * block_size_m)
-                offs_lhs_m = tile_m * block_size_m + block_m_range
-                check_range("offs_lhs_m (before modulus)", offs_lhs_m)
-                offs_lhs_m = offs_lhs_m % m
-                check_range("offs_lhs_m (after modulus)", offs_lhs_m)
-                assert torch.all(offs_lhs_m < m).item(), "offs_lhs_m >= m"
-
-                check_range("tile_n * block_size_n", tile_n * block_size_n)
-                offs_rhs_n = tile_n * block_size_n + block_n_range
-                check_range("offs_rhs_n (before modulus)", offs_rhs_n)
-                offs_rhs_n = offs_rhs_n % N
-                check_range("offs_rhs_n (after modulus)", offs_rhs_n)
-
-                lhs_offs_0 = last_row + offs_lhs_m[:, None]
-                check_range("lhs_offs_0", lhs_offs_0)
-                lhs_offs_1 = lhs_offs_0 * stride_lhs_m
-                check_range("lhs_offs_1", lhs_offs_1)
-                lhs_offs_2 = offs_k[None, :] * stride_lhs_k
-                check_range("lhs_offs_2", lhs_offs_2)
-                lhs_offs_3 = lhs_offs_1 + lhs_offs_2
-                check_range("lhs_offs_3", lhs_offs_3)
-
-                rhs_offs_1 = g * stride_rhs_g
-                check_range("rhs_offs_1", rhs_offs_1)
-                rhs_offs_2 = offs_k[:, None] * stride_rhs_k
-                check_range("rhs_offs_2", rhs_offs_2)
-                rhs_offs_3 = offs_rhs_n[None, :] * stride_rhs_n
-                check_range("rhs_offs_3", rhs_offs_3)
-                rhs_offs_4 = rhs_offs_1 + rhs_offs_2 + rhs_offs_3
-                check_range("rhs_offs_4", rhs_offs_4)
-
-                # Go to the next tile by advancing number of programs.
-                tile += num_programs
-                check_range("tile (at update)", tile)
-
-            # Get ready to go to the next MM problem.
-            last_mm_tile += num_tiles
-            check_range("last_mm_tile (at update)", last_mm_tile)
-            last_row += m
-            check_range("last_row (at update)", last_row)
-            assert last_row > 0, "last_row <= 0 (at update)"
-            assert last_row <= M, "last_row > M (at update)"
-
-        assert last_row == M, "last_row != M (at end)"
-
-
 # Triton GMM implementation.
 # ------------------------------------------------------------------------------
 
@@ -765,33 +614,16 @@ def test_simple_gmm():
         (     32,    16,     8,   4),  # Test 1
         (    512,  4096,  2048, 160),  # Test 2
         (  49152,  1408,  2048,  64),  # deepseekv2-16B
-
         (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
-      # (1867775,  2048,  1408,   8),  #   lhs => 7.12 GB, out => 4.90 GB
-      # (1857944,  2048,  1408,   8),  #   lhs => 7.09 GB, out => 4.87 GB
-      # (1853029,  2048,  1408,   8),  #   lhs => 7.07 GB, out => 4.86 GB
-      # (1850571,  2048,  1408,   8),  #   lhs => 7.06 GB, out => 4.85 GB
-      # (1849342,  2048,  1408,   8),  #   lhs => 7.05 GB, out => 4.85 GB
-      # (1848114,  2048,  1408,   8),  #   lhs => 7.05 GB, out => 4.85 GB
-      # (1808793,  2048,  1408,   8),  #   lhs => 6.90 GB, out => 4.74 GB
-      # (1730150,  2048,  1408,   8),  #   lhs => 6.60 GB, out => 4.54 GB
-      # (1525202,  2048,  1408,   8),  #   lhs => 5.82 GB, out => 4.000001 GB
-      # (1525201,  2048,  1408,   8),  #   lhs => 5.82 GB, out => 3.999999 GB
-      # (1048577,  2048,  1408,   8),  #   lhs => 4 GB + 4 KB, out => 2.75 GB
-      # (1048576,  2048,  1408,   8),  #   lhs => 4 GB, out => 2.75 GB
-
         ( 393216,  2048,  1408,  64),  # deepseekv2-16B
         (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
         (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
     ],
 )
 # fmt: on
-@pytest.mark.parametrize("in_dtype_str", ["ibf16"])
-@pytest.mark.parametrize("out_dtype_str", ["obf16"])
-# @pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
-# @pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
-@pytest.mark.parametrize("rng_seed", [0])
-# @pytest.mark.parametrize("rng_seed", [0, 77, 121])
+@pytest.mark.parametrize("in_dtype_str", ["ifp16", "ibf16", "ifp32"])
+@pytest.mark.parametrize("out_dtype_str", ["ofp16", "obf16", "ofp32"])
+@pytest.mark.parametrize("rng_seed", [0, 77, 121])
 def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int):
     in_dtype = dtype_from_str(in_dtype_str)
     if in_dtype == torch.float32:
@@ -801,9 +633,7 @@ def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: s
         M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
     )
     out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
-    out_triton = gen_output(M, N, preferred_element_type=out_dtype)
-    simulate_triton_gmm_kernel(lhs, rhs, group_sizes, out_triton)
-    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype, existing_out=out_triton)
+    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
