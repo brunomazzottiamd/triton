@@ -339,6 +339,11 @@ def simulate_triton_gmm_kernel(
     block_size_m, block_size_k, block_size_n = check_tiling(tiling)
     block_m_range = tl_arange(0, block_size_m)
     check_range("tl_arange(0, block_size_m)", block_m_range)
+    block_k_range = tl_arange(0, block_size_k)
+    check_range("tl_arange(0, block_size_k)", block_k_range)
+    offs_k = block_k_range
+    block_n_range = tl_arange(0, block_size_n)
+    check_range("tl_arange(0, block_size_m)", block_n_range)
 
     num_programs = compute_grid(N, block_size_m, block_size_n, group_sizes)[0]
 
@@ -390,6 +395,30 @@ def simulate_triton_gmm_kernel(
                 offs_lhs_m = offs_lhs_m % m
                 check_range("offs_lhs_m (after modulus)", offs_lhs_m)
                 assert torch.all(offs_lhs_m < m).item(), "offs_lhs_m >= m"
+
+                check_range("tile_n * block_size_n", tile_n * block_size_n)
+                offs_rhs_n = tile_n * block_size_n + block_n_range
+                check_range("offs_rhs_n (before modulus)", offs_rhs_n)
+                offs_rhs_n = offs_rhs_n % N
+                check_range("offs_rhs_n (after modulus)", offs_rhs_n)
+
+                lhs_offs_0 = last_row + offs_lhs_m[:, None]
+                check_range("lhs_offs_0", lhs_offs_0)
+                lhs_offs_1 = lhs_offs_0 * stride_lhs_m
+                check_range("lhs_offs_1", lhs_offs_1)
+                lhs_offs_2 = offs_k[None, :] * stride_lhs_k
+                check_range("lhs_offs_2", lhs_offs_2)
+                lhs_offs_3 = lhs_offs_1 + lhs_offs_2
+                check_range("lhs_offs_3", lhs_offs_3)
+
+                rhs_offs_1 = g * stride_rhs_g
+                check_range("rhs_offs_1", rhs_offs_1)
+                rhs_offs_2 = offs_k[:, None] * stride_rhs_k
+                check_range("rhs_offs_2", rhs_offs_2)
+                rhs_offs_3 = offs_rhs_n[None, :] * stride_rhs_n
+                check_range("rhs_offs_3", rhs_offs_3)
+                rhs_offs_4 = rhs_offs_1 + rhs_offs_2 + rhs_offs_3
+                check_range("rhs_offs_4", rhs_offs_4)
 
                 # Go to the next tile by advancing number of programs.
                 tile += num_programs
