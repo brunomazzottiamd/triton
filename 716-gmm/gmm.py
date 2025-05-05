@@ -296,6 +296,17 @@ def simulate_triton_gmm_kernel(
     out: Tensor,
     tiling: tuple[int, int, int] = TILING,
 ) -> None:
+    def check_range(desc: str, x: int | Tensor, bits: int = 32):
+        assert is_power_of_2(bits), f"Bit width must be a power of 2, it's {bits}."
+        limit = 2 ** (bits - 1) - 1
+        if isinstance(x, int):
+            assert x >= 0, f"{desc} is < 0"
+            assert x < limit, f"{desc} is >= max {bits}-bit value"
+        else:
+            assert isinstance(x, Tensor)
+            assert torch.all(x >= 0).item(), f"{desc} is < 0"
+            assert torch.all(x < limit).item(), f"{desc} is >= max {bits}-bit value"
+
     check_input_device_dtype(lhs, rhs, group_sizes)
     M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
     stride_lhs_m, stride_lhs_k = lhs.stride()
@@ -306,14 +317,16 @@ def simulate_triton_gmm_kernel(
 
     for program_id in range(num_programs):
         tile = program_id
-        assert tile >= 0, "tile < 0 (at initialization)"
+        check_range("tile (at initialization)", tile)
 
         # Tile limit of last MM problem (inclusive).
         last_mm_tile = 0
+        check_range("last_mm_tile (at initialization)", last_mm_tile)
 
         # Last input row of lhs and output row of out. Each group reads some rows of
         # lhs and writes some rows to out.
         last_row = 0
+        check_range("last_row (at initialization)", last_row)
 
         # Loop through all (m, K, N) MM problems:
         #   (m, K) x (K, N) = (m, N)
@@ -321,38 +334,38 @@ def simulate_triton_gmm_kernel(
         for g in range(G):
             # Get m dimension of current MM problem.
             m = int(group_sizes[g].item())
-            assert m > 0, "m <= 0"
+            check_range("m", m)
 
             num_m_tiles = triton.cdiv(m, block_size_m)
-            assert num_m_tiles > 0, "num_m_tiles <= 0"
+            check_range("num_m_tiles", num_m_tiles)
             num_n_tiles = triton.cdiv(N, block_size_n)
-            assert num_n_tiles > 0, "num_n_tiles <= 0"
+            check_range("num_n_tiles", num_n_tiles)
             num_tiles = num_m_tiles * num_n_tiles
-            assert num_tiles > 0, "num_tiles <= 0"
+            check_range("num_tiles", num_tiles)
 
             # Loop through tiles of current MM problem.
             while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
                 # Figure out tile coordinates in current MM problem.
                 tile_in_mm = tile - last_mm_tile
-                assert tile_in_mm >= 0, "tile_in_mm < 0"
+                check_range("tile_in_mm", tile_in_mm)
                 tile_m = tile_in_mm // num_n_tiles
                 assert tile_m >= 0, "tile_m < 0"
-                assert tile_m < num_m_tiles, "tile_m >= num_m_tiles"
+                check_range("tile_m", tile_m)
                 tile_n = tile_in_mm % num_n_tiles
-                assert tile_n >= 0, "tile_n < 0"
-                assert tile_n < num_n_tiles, "tile_n >= num_n_tiles"
+                check_range("tile_n", tile_n)
 
                 # Do regular MM:
                 # TODO: Implement simulation.
 
                 # Go to the next tile by advancing number of programs.
                 tile += num_programs
-                assert tile > 0, "tile <= 0 (at update)"
+                check_range("tile (at update)", tile)
 
             # Get ready to go to the next MM problem.
             last_mm_tile += num_tiles
-            assert last_mm_tile > 0, "last_mm_tile <= 0 (at update)"
+            check_range("last_mm_tile (at update)", last_mm_tile)
             last_row += m
+            check_range("last_row (at update)", last_row)
             assert last_row > 0, "last_row <= 0 (at update)"
             assert last_row <= M, "last_row > M (at update)"
 
@@ -722,7 +735,9 @@ def test_gmm(M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: s
         M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
     )
     out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
-    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+    out_triton = gen_output(M, N, preferred_element_type=out_dtype)
+    simulate_triton_gmm_kernel(lhs, rhs, group_sizes, out_triton)
+    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype, existing_out=out_triton)
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
