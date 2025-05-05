@@ -270,7 +270,7 @@ def compute_grid(
     num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
     num_n_tiles = triton.cdiv(N, block_size_n)
     num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
-    return (min(num_sms(device=device), num_tiles),)
+    return (int(min(num_sms(device=device), num_tiles)),)
 
 
 # Triton GMM simulation.
@@ -309,7 +309,7 @@ def simulate_triton_gmm_kernel(
         #   sum(m) = M
         for g in range(G):
             # Get m dimension of current MM problem.
-            m = group_sizes[g]
+            m = int(group_sizes[g].item())
             assert m > 0, "m <= 0"
 
             num_m_tiles = triton.cdiv(m, block_size_m)
