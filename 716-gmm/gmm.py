@@ -187,7 +187,7 @@ def gen_input(
     rhs = torch.randn((G, K, N), dtype=torch.float32, device=device).to(
         preferred_element_type
     )
-    group_sizes = gen_group_sizes(M, G, device=device, rng_seed=rng_seed)
+    group_sizes = gen_group_sizes(M, G, device=device, rng_seed=None)
 
     return lhs, rhs, group_sizes
 
@@ -307,7 +307,7 @@ def torch_gmm(
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
-    M, _, N, _ = shape_from_input(lhs, rhs, group_sizes)
+    M, _, N, G = shape_from_input(lhs, rhs, group_sizes)
     out = get_output(
         M,
         N,
@@ -318,8 +318,8 @@ def torch_gmm(
 
     last_row = 0
 
-    for group_size in group_sizes:
-        m = group_size.item()
+    for g in range(G):
+        m = int(group_sizes[g].item())
 
         # Skip group if there are no tokens assigned to the expert.
         if m == 0:
@@ -328,7 +328,7 @@ def torch_gmm(
         start_idx = last_row
         end_idx = last_row + m
 
-        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[m]
+        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[g]
 
         last_row += m
 
@@ -409,16 +409,12 @@ def triton_gmm_kernel(
         m = tl.load(group_sizes_ptr + g)
         tl.device_assert(m >= 0, "m < 0")
 
-        # Skip group if there are no tokens assigned to the expert.
-        if m == 0:
-            continue
-
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
-        tl.device_assert(num_m_tiles > 0, "num_m_tiles <= 0")
+        tl.device_assert(num_m_tiles >= 0, "num_m_tiles < 0")
         num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
         tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
         num_tiles = num_m_tiles * num_n_tiles
-        tl.device_assert(num_tiles > 0, "num_tiles <= 0")
+        tl.device_assert(num_tiles >= 0, "num_tiles < 0")
 
         # Loop through tiles of current MM problem.
         while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
