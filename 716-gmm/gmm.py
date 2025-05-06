@@ -15,7 +15,6 @@
 
 # Python standard library
 import argparse
-import random
 import typing
 
 # PyTorch
@@ -88,32 +87,81 @@ TILING: tuple[int, int, int] = (64, 64, 64)
 # ------------------------------------------------------------------------------
 
 
-def random_group_sizes(
-    M: int, G: int, device: torch.device | str = DEVICE, rng_seed: int | None = RNG_SEED
+def gen_group_sizes(
+    M: int,
+    G: int,
+    device: torch.device | str = DEVICE,
+    rng_seed: int | None = RNG_SEED,
+    unused_tokens_prob: float = 0.05,
+    unused_experts_prob: float = 0.1,
 ) -> Tensor:
-    assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
-    assert G > 0, f"Number of groups G must be positive (G = {G})."
-    assert G <= M, f"Cannot split M into more than M groups (M = {M}, G = {G})."
+    assert M >= 0, f"Number of tokens M must be non-negative (it's {M})."
+    assert G > 0, f"Number of experts G must be positive (it's {G})."
+    assert (
+        0 <= unused_tokens_prob <= 1
+    ), f"Probability of unused tokens must be in [0, 1] interval (it's {unused_tokens_prob})."
+    assert (
+        0 <= unused_experts_prob <= 1
+    ), f"Probability of unused experts must be in [0, 1] interval (it's {unused_experts_prob})."
 
     if rng_seed is not None:
-        random.seed(rng_seed)
+        torch.manual_seed(rng_seed)
 
-    # Generate G - 1 sorted cut points between 1 and M - 1.
-    cuts = sorted(random.sample(range(1, M), G - 1))
-    # Add 0 at the beginning and M at the end, then take differences.
-    group_sizes = [b - a for a, b in zip([0] + cuts, cuts + [M])]
+    if unused_tokens_prob > 0:
+        # Optionally drop tokens to simulate routing sparsity, some tokens may not be routed.
+        num_unused_tokens = M
+        while num_unused_tokens == M:
+            num_unused_tokens = int(
+                torch.binomial(
+                    torch.tensor(float(M), device=device),
+                    torch.tensor(unused_tokens_prob, device=device),
+                ).item()
+            )
+    else:
+        num_unused_tokens = 0
+    num_used_tokens = M - num_unused_tokens
+    assert (
+        num_unused_tokens >= 0
+    ), f"Number of unused tokens must be non-negative (it's {num_unused_tokens})."
+    assert (
+        num_used_tokens > 0
+    ), f"Number of used tokens must be positive (it's {num_used_tokens})."
+    assert (
+        num_used_tokens + num_unused_tokens == M
+    ), f"Unused + used tokens don't add up total tokens ({num_used_tokens} + {num_unused_tokens} != {M})."
+
+    if unused_experts_prob > 0:
+        # Some experts may have zero tokens assigned to them.
+        num_used_experts = 0
+        while num_used_experts == 0:
+            used_experts = torch.nonzero(
+                torch.rand((G,), device=device) >= unused_experts_prob
+            ).squeeze()
+            num_used_experts = used_experts.numel()
+    else:
+        used_experts = torch.arange(0, G, device=device)
+        num_used_experts = G
+    assert (
+        num_used_experts >= 1
+    ), f"At least one expert must be used (it's {num_used_experts})."
+
+    group_sizes = torch.bincount(
+        used_experts[
+            torch.randint(low=0, high=num_used_experts, size=(num_used_tokens,))
+        ],
+        minlength=G,
+    ).to(torch.int32)
 
     assert (
         len(group_sizes) == G
     ), f"Group sizes don't have {G} elements (it's {len(group_sizes)})."
-    assert all(
-        group_size > 0 for group_size in group_sizes
-    ), "All group sizes must be positive."
+    assert torch.all(group_sizes >= 0).item(), "All group sizes must be non-negative."
     assert (
-        sum(group_sizes) == M
-    ), f"Group sizes don't add up to {M} (it's {sum(group_sizes)})."
+        torch.sum(group_sizes).item() == num_used_tokens
+    ), f"Group sizes don't add up to used tokens {num_used_tokens}."
+    assert group_sizes.dtype == torch.int32, "Group sizes must be int32."
 
-    return torch.tensor(group_sizes, dtype=torch.int32, device=device)
+    return group_sizes
 
 
 def gen_input(
@@ -139,7 +187,7 @@ def gen_input(
     rhs = torch.randn((G, K, N), dtype=torch.float32, device=device).to(
         preferred_element_type
     )
-    group_sizes = random_group_sizes(M, G, device=device, rng_seed=rng_seed)
+    group_sizes = gen_group_sizes(M, G, device=device, rng_seed=rng_seed)
 
     return lhs, rhs, group_sizes
 
@@ -153,7 +201,7 @@ def gen_output(
     assert M > 0, f"Number of out rows M must be positive (M = {M})."
     assert N > 0, f"Number of out columns N must be positive (N = {N})."
 
-    return torch.empty((M, N), dtype=preferred_element_type, device=device)
+    return torch.zeros((M, N), dtype=preferred_element_type, device=device)
 
 
 # Parameter checking functions.
@@ -259,7 +307,7 @@ def torch_gmm(
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
-    M, _, N, G = shape_from_input(lhs, rhs, group_sizes)
+    M, _, N, _ = shape_from_input(lhs, rhs, group_sizes)
     out = get_output(
         M,
         N,
@@ -268,50 +316,23 @@ def torch_gmm(
         existing_out=existing_out,
     )
 
-    offsets = torch.zeros(G + 1, dtype=torch.int32, device=lhs.device)
-    torch.cumsum(group_sizes, dim=0, out=offsets[1:])
+    last_row = 0
 
-    for g in range(G):
-        start_idx = offsets[g]
-        end_idx = offsets[g + 1]
-        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[g]
+    for group_size in group_sizes:
+        m = group_size.item()
+
+        # Skip group if there are no tokens assigned to the expert.
+        if m == 0:
+            continue
+
+        start_idx = last_row
+        end_idx = last_row + m
+
+        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[m]
+
+        last_row += m
 
     return out
-
-
-# Kernel grid calculation.
-# ------------------------------------------------------------------------------
-
-
-def num_sms(device: torch.device | str = DEVICE) -> int:
-    num_sms = torch.cuda.get_device_properties(device).multi_processor_count
-    assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
-    return num_sms
-
-
-def compute_grid(
-    N: int,
-    block_size_m: int,
-    block_size_n: int,
-    group_sizes: Tensor,
-) -> tuple[int]:
-    assert N > 0, f"N must be positive, it's {N}."
-    assert is_power_of_2(
-        block_size_m
-    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
-    assert is_power_of_2(
-        block_size_n
-    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
-    assert torch.all(group_sizes > 0).item(), "All group_sizes must be positive."
-    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
-    assert torch.all(num_m_tiles > 0).item(), "All num_m_tiles must be positive."
-    num_n_tiles = triton.cdiv(N, block_size_n)
-    assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
-    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
-    assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
-    num_programs = int(min(num_sms(device=group_sizes.device), num_tiles))
-    assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
-    return (num_programs,)
 
 
 # Triton GMM implementation.
@@ -386,7 +407,11 @@ def triton_gmm_kernel(
     for g in range(G):
         # Get m dimension of current MM problem.
         m = tl.load(group_sizes_ptr + g)
-        tl.device_assert(m > 0, "m <= 0")
+        tl.device_assert(m >= 0, "m < 0")
+
+        # Skip group if there are no tokens assigned to the expert.
+        if m == 0:
+            continue
 
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
         tl.device_assert(num_m_tiles > 0, "num_m_tiles <= 0")
@@ -535,7 +560,38 @@ def triton_gmm_kernel(
         tl.device_assert(last_row > 0, "last_row <= 0 (at update)")
         tl.device_assert(last_row <= M, "last_row > M (at update)")
 
-    tl.device_assert(last_row == M, "last_row != M (at end)")
+    tl.device_assert(last_row <= M, "last_row > M (at end)")
+
+
+def num_sms(device: torch.device | str = DEVICE) -> int:
+    num_sms = torch.cuda.get_device_properties(device).multi_processor_count
+    assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
+    return num_sms
+
+
+def compute_grid(
+    N: int,
+    block_size_m: int,
+    block_size_n: int,
+    group_sizes: Tensor,
+) -> tuple[int]:
+    assert N > 0, f"N must be positive, it's {N}."
+    assert is_power_of_2(
+        block_size_m
+    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
+    assert is_power_of_2(
+        block_size_n
+    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
+    assert torch.all(group_sizes >= 0).item(), "All group_sizes must be non-negative."
+    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
+    assert torch.all(num_m_tiles >= 0).item(), "All num_m_tiles must be non-negative."
+    num_n_tiles = triton.cdiv(N, block_size_n)
+    assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
+    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
+    assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
+    num_programs = int(min(num_sms(device=group_sizes.device), num_tiles))
+    assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
+    return (num_programs,)
 
 
 def triton_gmm(
@@ -589,6 +645,7 @@ def triton_gmm(
 # GMM shapes used only for test purposes,
 # fmt: off
 TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
+    #  M,    K,    N,   G
     ( 10,    2,    3,   4),  # same shape of test_simple_gmm
     ( 32,   16,    8,   4),  # Test 1
     (512, 4096, 2048, 160),  # Test 2
@@ -599,6 +656,7 @@ TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
 # Real GMM shapes, used by real models.
 # fmt: off
 REAL_SHAPES: list[tuple[int, int, int, int]] = [
+    #      M,     K,     N,   G
     (  49152,  1408,  2048,  64),  # deepseekv2-16B
     (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
     ( 393216,  2048,  1408,  64),  # deepseekv2-16B
@@ -720,7 +778,7 @@ def benchmark_triton_gmm(
 
         distinct_group_sizes = 10
         group_sizes = [group_sizes_0] + [
-            random_group_sizes(M, G, rng_seed=None)
+            gen_group_sizes(M, G, rng_seed=None)
             for _ in range(distinct_group_sizes - 1)
         ]
         assert (
