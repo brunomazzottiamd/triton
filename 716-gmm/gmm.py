@@ -407,13 +407,16 @@ def triton_gmm_kernel(
     for g in range(G):
         # Get m dimension of current MM problem.
         m = tl.load(group_sizes_ptr + g)
+        # m can be zero if group is empty
         tl.device_assert(m >= 0, "m < 0")
 
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
+        # num_m_tiles can be zero if group is empty
         tl.device_assert(num_m_tiles >= 0, "num_m_tiles < 0")
         num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
         tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
         num_tiles = num_m_tiles * num_n_tiles
+        # num_tiles can be zero if group is empty
         tl.device_assert(num_tiles >= 0, "num_tiles < 0")
 
         # Loop through tiles of current MM problem.
@@ -551,9 +554,11 @@ def triton_gmm_kernel(
 
         # Get ready to go to the next MM problem.
         last_mm_tile += num_tiles
-        tl.device_assert(last_mm_tile > 0, "last_mm_tile <= 0 (at update)")
+        # last_mm_tile can be zero if group 0 is skipped
+        tl.device_assert(last_mm_tile >= 0, "last_mm_tile < 0 (at update)")
         last_row += m
-        tl.device_assert(last_row > 0, "last_row <= 0 (at update)")
+        # last_row can be zero if group 0 is skipped
+        tl.device_assert(last_row >= 0, "last_row < 0 (at update)")
         tl.device_assert(last_row <= M, "last_row > M (at update)")
 
     tl.device_assert(last_row <= M, "last_row > M (at end)")
