@@ -1004,7 +1004,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--verbose", action="store_true", help="enable verbose output")
 
-    return validate_args(parser.parse_args())
+    try:
+        return validate_args(parser.parse_args())
+    except argparse.ArgumentError as arg_error:
+        import sys
+
+        parser.print_usage()
+        print(f"{sys.argv[0]}: error: {arg_error}")
+        sys.exit(1)
 
 
 # Main function: entry point.
