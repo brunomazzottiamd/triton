@@ -810,7 +810,7 @@ def test_gmm(
 
 
 def benchmark_triton_gmm(
-    target_shape: tuple[int, int, int, int] | None = None,
+    bench_shape: tuple[int, int, int, int] | None = None,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
     rng_seed: int = RNG_SEED,
@@ -824,7 +824,7 @@ def benchmark_triton_gmm(
     @triton.testing.perf_report(
         triton.testing.Benchmark(
             x_names=["M", "K", "N", "G"],
-            x_vals=[target_shape] if target_shape is not None else REAL_SHAPES,
+            x_vals=[bench_shape] if bench_shape is not None else REAL_SHAPES,
             line_arg="provider",
             line_vals=[triton_provider],
             line_names=[triton_provider],
@@ -885,7 +885,7 @@ def benchmark_triton_gmm(
 
         return p50_tflops, p20_tflops, p80_tflops
 
-    logging.info("Benchmarking Triton kernel:")
+    logging.info("Benchmarking Triton GMM kernel:")
     logging.info(
         "  input_type = %s, output_type = %s, num_group_sizes = %d",
         in_dtype_str,
@@ -910,7 +910,7 @@ def run_triton_gmm(
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
 ) -> None:
-    logging.info("Running Triton kernel:")
+    logging.info("Running Triton GMM kernel:")
     logging.info(
         "  input_type = %s, output_type = %s, num_group_sizes = %d",
         str_from_dtype(in_dtype),
@@ -935,21 +935,44 @@ def run_triton_gmm(
 # ------------------------------------------------------------------------------
 
 
-def parse_args() -> argparse.Namespace:
-    def positive_int(value: str) -> int:
-        try:
-            int_value = int(value)
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
-        if int_value <= 0:
-            raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
-        return int_value
+def positive_int(value: str) -> int:
+    try:
+        int_value = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+    if int_value <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+    return int_value
 
+
+def validate_args(args: argparse.Namespace) -> argparse.Namespace:
+    shape_args = [args.M, args.K, args.N, args.G]
+    all_none = all(arg is None for arg in shape_args)
+    all_provided = all(arg is not None for arg in shape_args)
+
+    if args.bench:
+        if not all_none and not all_provided:
+            raise argparse.ArgumentError(
+                None,
+                "when --bench is used, M, K, N, and G must be either all provided or all absent",
+            )
+    else:
+        if not all_provided:
+            raise argparse.ArgumentError(
+                None, "M, K, N, and G are mandatory when --bench isn't used"
+            )
+
+    return args
+
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="run GMM Triton kernel")
-    parser.add_argument("M", type=positive_int, help="number of rows")
-    parser.add_argument("K", type=positive_int, help="shared dimension")
-    parser.add_argument("N", type=positive_int, help="number of columns")
-    parser.add_argument("G", type=positive_int, help="number of groups")
+
+    parser.add_argument("M", type=positive_int, nargs="?", help="number of rows")
+    parser.add_argument("K", type=positive_int, nargs="?", help="shared dimension")
+    parser.add_argument("N", type=positive_int, nargs="?", help="number of columns")
+    parser.add_argument("G", type=positive_int, nargs="?", help="number of groups")
+
     parser.add_argument(
         "--input-type",
         choices=SUPPORTED_DTYPES_STR,
@@ -962,6 +985,7 @@ def parse_args() -> argparse.Namespace:
         default=DTYPE_STR,
         help=f"output data type (default: {DTYPE_STR})",
     )
+
     parser.add_argument(
         "--rng-seed",
         type=int,
@@ -974,12 +998,16 @@ def parse_args() -> argparse.Namespace:
         default=NUM_GROUP_SIZES,
         help=f"number of distinct random group sizes to use (default: {NUM_GROUP_SIZES})",
     )
+
+    parser.add_argument(
+        "--bench", action="store_true", help="benchmark kernel instead of running it"
+    )
     parser.add_argument("--verbose", action="store_true", help="enable verbose output")
-    return parser.parse_args()
+
+    return validate_args(parser.parse_args())
 
 
 # Main function: entry point.
-# TODO: Implement benchmark.
 # ------------------------------------------------------------------------------
 
 
@@ -992,26 +1020,26 @@ def main() -> None:
     )
     logging.getLogger("matplotlib").setLevel(logging.CRITICAL + 1)
 
+    shape = (args.M, args.K, args.N, args.G)
     in_dtype = dtype_from_str(args.input_type)
     out_dtype = dtype_from_str(args.output_type)
 
-    run_triton_gmm(
-        args.M,
-        args.K,
-        args.N,
-        args.G,
-        in_dtype=in_dtype,
-        out_dtype=out_dtype,
-        rng_seed=args.rng_seed,
-        num_group_sizes=args.num_group_sizes,
-    )
-
-    benchmark_triton_gmm(
-        in_dtype=in_dtype,
-        out_dtype=out_dtype,
-        rng_seed=args.rng_seed,
-        num_group_sizes=args.num_group_sizes,
-    )
+    if args.bench:
+        benchmark_triton_gmm(
+            bench_shape=None if all(arg is None for arg in shape) else shape,
+            in_dtype=in_dtype,
+            out_dtype=out_dtype,
+            rng_seed=args.rng_seed,
+            num_group_sizes=args.num_group_sizes,
+        )
+    else:
+        run_triton_gmm(
+            *shape,
+            in_dtype=in_dtype,
+            out_dtype=out_dtype,
+            rng_seed=args.rng_seed,
+            num_group_sizes=args.num_group_sizes,
+        )
 
 
 if __name__ == "__main__":
