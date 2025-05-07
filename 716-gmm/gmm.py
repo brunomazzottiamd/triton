@@ -81,7 +81,7 @@ RNG_SEED: int = 0
 
 
 # Probabilities for generating random group sizes.
-UNUSED_TOKENS_PROB: float = 0.05
+UNUSED_TOKENS_PROB: float = 0.0
 UNUSED_EXPERTS_PROB: float = 0.1
 
 
@@ -141,7 +141,11 @@ def gen_group_sizes(
     ), f"Unused + used tokens don't add up total tokens ({num_used_tokens} + {num_unused_tokens} != {M})."
 
     if num_unused_tokens > 0:
-        logging.debug("Group sizes generation: dropped %d tokens.", num_unused_tokens)
+        logging.debug(
+            "Group sizes generation: dropped %d token%s.",
+            num_unused_tokens,
+            "s" if num_unused_tokens > 1 else "",
+        )
 
     if unused_experts_prob > 0:
         # Some experts may have zero tokens assigned to them.
@@ -166,7 +170,11 @@ def gen_group_sizes(
     ), f"Unused + used experts don't add up total experts ({num_unused_experts} + {num_used_experts} != {G})."
 
     if num_unused_experts > 0:
-        logging.debug("Group sizes generation: dropped %d experts.", num_unused_experts)
+        logging.debug(
+            "Group sizes generation: dropped %d expert%s.",
+            num_unused_experts,
+            "s" if num_unused_experts > 1 else "",
+        )
 
     group_sizes = torch.bincount(
         used_experts[
@@ -198,8 +206,8 @@ def gen_multiple_group_sizes(
     group_sizes_0: Tensor | None = None,
 ) -> list[Tensor]:
     assert (
-        num_group_sizes >= 0
-    ), f"Number of group sizes to be generated must be non-negative, it's {num_group_sizes}."
+        num_group_sizes > 0
+    ), f"Number of group sizes to be generated must be positive, it's {num_group_sizes}."
     multiple_group_sizes = [
         gen_group_sizes(
             M,
@@ -209,10 +217,11 @@ def gen_multiple_group_sizes(
             unused_tokens_prob=unused_tokens_prob,
             unused_experts_prob=unused_experts_prob,
         )
-        for g in range(num_group_sizes)
+        for g in range(
+            num_group_sizes if group_sizes_0 is None else num_group_sizes - 1
+        )
     ]
     if group_sizes_0 is not None:
-        num_group_sizes += 1
         multiple_group_sizes.insert(0, group_sizes_0)
     assert (
         len(multiple_group_sizes) == num_group_sizes
@@ -845,7 +854,7 @@ def benchmark_triton_gmm(
 
         for group_sizes in multiple_group_sizes:
             logging.debug(
-                "      group_sizes (first 8) = %s", str(group_sizes[:8].tolist())
+                "      group_sizes (first 5) = %s", str(group_sizes[:5].tolist())
             )
 
             p50_ms, p20_ms, p80_ms = triton.testing.do_bench(
@@ -864,17 +873,17 @@ def benchmark_triton_gmm(
             tops_sum += torch.sum(1e-12 * group_sizes * N * (K + (K - 1))).item()
 
         p50_tflops = round(tops_sum / p50_s_sum, 2)
-        p20_tflops = round(tops_sum / p20_s_sum, 2)
-        p80_tflops = round(tops_sum / p80_s_sum, 2)
+        p20_tflops = round(tops_sum / p80_s_sum, 2)
+        p80_tflops = round(tops_sum / p20_s_sum, 2)
 
         logging.info(
-            "      p20 TFLOPS = %.2f, p50 TFLOPS = %.2f, p80 TFLOPS = %.2f",
+            "      TFLOPS: p20 = %.2f, p50 = %.2f, p80 = %.2f",
             p20_tflops,
             p50_tflops,
             p80_tflops,
         )
 
-        return p50_tflops, p80_tflops, p20_tflops
+        return p50_tflops, p20_tflops, p80_tflops
 
     logging.info("Benchmarking Triton kernel:")
     logging.info(
@@ -918,7 +927,7 @@ def run_triton_gmm(
     )
 
     for group_sizes in multiple_group_sizes:
-        logging.debug("      group_sizes (first 8) = %s", str(group_sizes[:8].tolist()))
+        logging.debug("      group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
         triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
 
 
@@ -978,9 +987,10 @@ def main() -> None:
     args = parse_args()
 
     logging.basicConfig(
-        format="%(asctime)s: %(message)s",
+        format="%(asctime)s > %(message)s",
         level=logging.INFO if args.verbose else logging.ERROR,
     )
+    logging.getLogger("matplotlib").setLevel(logging.CRITICAL + 1)
 
     in_dtype = dtype_from_str(args.input_type)
     out_dtype = dtype_from_str(args.output_type)
@@ -996,12 +1006,12 @@ def main() -> None:
         num_group_sizes=args.num_group_sizes,
     )
 
-    # benchmark_triton_gmm(
-    #     in_dtype=in_dtype,
-    #     out_dtype=out_dtype,
-    #     rng_seed=args.rng_seed,
-    #     num_group_sizes=args.num_group_sizes,
-    # )
+    benchmark_triton_gmm(
+        in_dtype=in_dtype,
+        out_dtype=out_dtype,
+        rng_seed=args.rng_seed,
+        num_group_sizes=args.num_group_sizes,
+    )
 
 
 if __name__ == "__main__":
