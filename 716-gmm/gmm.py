@@ -18,6 +18,7 @@
 
 # Python standard library
 import argparse
+import itertools
 import logging
 import typing
 
@@ -632,6 +633,75 @@ def triton_gmm_kernel(
     tl.device_assert(last_row <= M, "last_row > M (at end)")
 
 
+def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
+    block_sizes = [32, 64, 128, 256]
+    return [
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": block_size_m,
+                "BLOCK_SIZE_K": block_size_k,
+                "BLOCK_SIZE_N": block_size_n,
+            }
+        )
+        for block_size_m, block_size_k, block_size_n in itertools.product(
+            block_sizes, block_sizes, block_sizes
+        )
+    ]
+
+
+@triton.autotune(configs=autotune_configs(), key=["M", "K", "N", "G"])
+@triton.jit
+@typing.no_type_check
+def triton_autotuned_gmm_kernel(
+    # Tensor pointers:
+    lhs_ptr,
+    rhs_ptr,
+    group_sizes_ptr,
+    out_ptr,
+    # Tensor shapes:
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_out_m: int,
+    stride_out_n: int,
+    # Meta-parameters:
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+):
+    triton_gmm_kernel(
+        # Tensor pointers:
+        lhs_ptr,
+        rhs_ptr,
+        group_sizes_ptr,
+        out_ptr,
+        # Tensor shapes:
+        M,
+        K,
+        N,
+        G,
+        # Tensor strides:
+        stride_lhs_m,
+        stride_lhs_k,
+        stride_rhs_g,
+        stride_rhs_k,
+        stride_rhs_n,
+        stride_out_m,
+        stride_out_n,
+        # Meta-parameters:
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+    )
+
+
 def num_sms(device: torch.device | str = DEVICE) -> int:
     num_sms = torch.cuda.get_device_properties(device).multi_processor_count
     assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
@@ -667,13 +737,13 @@ def triton_gmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
-    tiling: tuple[int, int, int] = TILING,
     preferred_element_type: torch.dtype = DTYPE,
     existing_out: Tensor | None = None,
+    tiling: tuple[int, int, int] | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
     M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
-    block_size_m, block_size_k, block_size_n = check_tiling(tiling)
+
     out = get_output(
         M,
         N,
@@ -682,27 +752,56 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    grid = compute_grid(N, block_size_m, block_size_n, group_sizes)
-    triton_gmm_kernel[grid](
-        # Tensor pointers:
-        lhs,
-        rhs,
-        group_sizes,
-        out,
-        # Tensor shapes:
-        M,
-        K,
-        N,
-        G,
-        # Tensor strides:
-        *lhs.stride(),
-        *rhs.stride(),
-        *out.stride(),
-        # Meta-parameters:
-        BLOCK_SIZE_M=block_size_m,
-        BLOCK_SIZE_K=block_size_k,
-        BLOCK_SIZE_N=block_size_n,
-    )
+    if tiling is not None:
+        block_size_m, block_size_k, block_size_n = check_tiling(tiling)
+        logging.debug(
+            "Running kernel with handpicked tiling (BLOCK_SIZE_M = %d, BLOCK_SIZE_K = %d, BLOCK_SIZE_N = %d).",
+            block_size_m,
+            block_size_k,
+            block_size_n,
+        )
+        grid = compute_grid(N, block_size_m, block_size_n, group_sizes)
+        triton_gmm_kernel[grid](
+            # Tensor pointers:
+            lhs,
+            rhs,
+            group_sizes,
+            out,
+            # Tensor shapes:
+            M,
+            K,
+            N,
+            G,
+            # Tensor strides:
+            *lhs.stride(),
+            *rhs.stride(),
+            *out.stride(),
+            # Meta-parameters:
+            BLOCK_SIZE_M=block_size_m,
+            BLOCK_SIZE_K=block_size_k,
+            BLOCK_SIZE_N=block_size_n,
+        )
+    else:
+        logging.debug("Running autotuned kernel.")
+        autotuned_grid = lambda META: compute_grid(
+            N, META["BLOCK_SIZE_M"], META["BLOCK_SIZE_N"], group_sizes
+        )
+        triton_autotuned_gmm_kernel[autotuned_grid](
+            # Tensor pointers:
+            lhs,
+            rhs,
+            group_sizes,
+            out,
+            # Tensor shapes:
+            M,
+            K,
+            N,
+            G,
+            # Tensor strides:
+            *lhs.stride(),
+            *rhs.stride(),
+            *out.stride(),
+        )
 
     return out
 
@@ -785,6 +884,9 @@ def test_simple_gmm():
     torch.testing.assert_close(expected_out, out_triton)
 
 
+QUICK_TEST: bool = True
+
+
 @pytest.mark.parametrize("M, K, N, G", TEST_ONLY_SHAPES + REAL_SHAPES)
 @pytest.mark.parametrize(
     "in_dtype_str", {"i" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
@@ -797,14 +899,35 @@ def test_gmm(
     M: int, K: int, N: int, G: int, in_dtype_str: str, out_dtype_str: str, rng_seed: int
 ):
     in_dtype = dtype_from_str(in_dtype_str)
+    out_dtype = dtype_from_str(out_dtype_str)
+
+    # Skip conditions:
     if in_dtype == torch.float32:
         pytest.skip("Triton kernel isn't working with fp32 input type.")
-    out_dtype = dtype_from_str(out_dtype_str)
+    if (
+        QUICK_TEST
+        and (in_dtype == torch.float16 and out_dtype == torch.bfloat16)
+        or (in_dtype == torch.bfloat16 and out_dtype == torch.float16)
+    ):
+        pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
+        # Important notice: mixed fp16 / bf16 types work correctly!
+    if QUICK_TEST and (M, K, N, G) in TEST_ONLY_SHAPES:
+        pytest.skip(
+            f"Skipping test only shape {(M, K, N, G)}) to speed up test execution."
+        )
+        # Important notice: these test only shapes work correctly!
+
     lhs, rhs, group_sizes = gen_input(
         M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
     )
     out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
-    out_triton = triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+    out_triton = triton_gmm(
+        lhs,
+        rhs,
+        group_sizes,
+        preferred_element_type=out_dtype,
+        tiling=TILING if QUICK_TEST else None,  # don't use autotune in quick test
+    )
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
@@ -849,6 +972,11 @@ def benchmark_triton_gmm(
             num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
         )
 
+        # First "dry-run" to invoke autotuner.
+        triton_gmm(
+            lhs, rhs, group_sizes_0, preferred_element_type=out_dtype, existing_out=out
+        )
+
         quantiles = [0.5, 0.2, 0.8]
         p50_s_sum = 0.0
         p20_s_sum = 0.0
@@ -884,6 +1012,9 @@ def benchmark_triton_gmm(
             p20_tflops,
             p50_tflops,
             p80_tflops,
+        )
+        logging.info(
+            "      best_config = %s", str(triton_autotuned_gmm_kernel.best_config)
         )
 
         return p50_tflops, p20_tflops, p80_tflops
@@ -928,10 +1059,18 @@ def run_triton_gmm(
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
+    out = gen_output(M, N, preferred_element_type=out_dtype)
 
     for group_sizes in multiple_group_sizes:
         logging.debug("      group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
-        triton_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+        triton_gmm(
+            lhs,
+            rhs,
+            group_sizes,
+            preferred_element_type=out_dtype,
+            existing_out=out,
+            tiling=TILING,
+        )
 
 
 # Command line interface parsing.
