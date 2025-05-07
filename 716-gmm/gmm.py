@@ -634,6 +634,16 @@ def triton_gmm_kernel(
 
 
 def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
+    if not full_tuning_space:
+        return [
+            triton.Config(
+                {
+                    "BLOCK_SIZE_M": 128,
+                    "BLOCK_SIZE_K": 32,
+                    "BLOCK_SIZE_N": 256,
+                }
+            )
+        ]
     block_sizes = [32, 64, 128, 256]
     return [
         triton.Config(
