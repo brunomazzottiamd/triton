@@ -862,10 +862,10 @@ def benchmark_triton_gmm(
                 ),
                 quantiles=quantiles,
             )
-            p50_s_sum += p50_ms * 1e-3
-            p20_s_sum += p20_ms * 1e-3
-            p80_s_sum += p80_ms * 1e-3
-            tops_sum += torch.sum(1e-12 * group_sizes * N * (K + (K - 1))).item()
+            p50_s_sum += 1e-3 * p50_ms
+            p20_s_sum += 1e-3 * p20_ms
+            p80_s_sum += 1e-3 * p80_ms
+            tops_sum += torch.sum(1e-12 * 2 * group_sizes * N * K).item()
 
         p50_tflops = round(tops_sum / p50_s_sum, 2)
         p20_tflops = round(tops_sum / p80_s_sum, 2)
