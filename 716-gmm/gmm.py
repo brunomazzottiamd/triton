@@ -287,7 +287,7 @@ def check_input_device_dtype(lhs: Tensor, rhs: Tensor, group_sizes: Tensor) -> N
     assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
 
 
-def shape_from_input(
+def get_shape_from_input(
     lhs: Tensor, rhs: Tensor, group_sizes: Tensor
 ) -> tuple[int, int, int, int]:
     assert lhs.dim() == 2, f"lhs must have 2 dimensions (it's {lhs.dim()})."
@@ -321,9 +321,21 @@ def is_power_of_2(x: int) -> bool:
     return (x > 0) and (x & (x - 1) == 0)
 
 
-def check_tiling(tiling: tuple[int, int, int]) -> tuple[int, int, int]:
+def get_tiling(
+    M: int, K: int, N: int, tiling: tuple[int, int, int]
+) -> tuple[int, int, int]:
+    assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
+    assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
+    assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
+
     block_size_m, block_size_k, block_size_n = tiling
+
+    # Pick smaller block sizes for toy shapes.
+    block_size_m = min(triton.next_power_of_2(M), block_size_m)
+    block_size_k = min(triton.next_power_of_2(K), block_size_k)
+    block_size_n = min(triton.next_power_of_2(N), block_size_n)
+
     assert is_power_of_2(
         block_size_m
     ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
@@ -333,7 +345,8 @@ def check_tiling(tiling: tuple[int, int, int]) -> tuple[int, int, int]:
     assert is_power_of_2(
         block_size_n
     ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
-    return tiling
+
+    return block_size_m, block_size_k, block_size_n
 
 
 def get_output(
@@ -376,7 +389,8 @@ def torch_gmm(
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
-    M, _, N, G = shape_from_input(lhs, rhs, group_sizes)
+    M, _, N, G = get_shape_from_input(lhs, rhs, group_sizes)
+
     out = get_output(
         M,
         N,
@@ -752,7 +766,7 @@ def triton_gmm(
     tiling: tuple[int, int, int] | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
-    M, K, N, G = shape_from_input(lhs, rhs, group_sizes)
+    M, K, N, G = get_shape_from_input(lhs, rhs, group_sizes)
 
     out = get_output(
         M,
@@ -763,9 +777,9 @@ def triton_gmm(
     )
 
     if tiling is not None:
-        block_size_m, block_size_k, block_size_n = check_tiling(tiling)
+        block_size_m, block_size_k, block_size_n = get_tiling(M, K, N, tiling)
         logging.debug(
-            "Running kernel with handpicked tiling (BLOCK_SIZE_M = %d, BLOCK_SIZE_K = %d, BLOCK_SIZE_N = %d).",
+            "Running kernel with tiling (BLOCK_SIZE_M = %d, BLOCK_SIZE_K = %d, BLOCK_SIZE_N = %d).",
             block_size_m,
             block_size_k,
             block_size_n,
@@ -921,23 +935,23 @@ def test_gmm(
     ):
         pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
         # Important notice: mixed fp16 / bf16 types work correctly!
-    if QUICK_TEST and (M, K, N, G) in TEST_ONLY_SHAPES:
-        pytest.skip(
-            f"Skipping test only shape {(M, K, N, G)}) to speed up test execution."
-        )
-        # Important notice: these test only shapes work correctly!
 
     lhs, rhs, group_sizes = gen_input(
         M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
     )
+
     out_torch = torch_gmm(lhs, rhs, group_sizes, preferred_element_type=out_dtype)
+
+    # Don't use autotune for test only shapes, don't use autotune in quick test.
+    tiling = TILING if (M, K, N, G) in TEST_ONLY_SHAPES or QUICK_TEST else None
     out_triton = triton_gmm(
         lhs,
         rhs,
         group_sizes,
         preferred_element_type=out_dtype,
-        tiling=TILING if QUICK_TEST else None,  # don't use autotune in quick test
+        tiling=tiling,
     )
+
     torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
 
 
