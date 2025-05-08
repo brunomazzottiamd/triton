@@ -928,9 +928,8 @@ def test_gmm(
     # Skip conditions:
     if in_dtype == torch.float32:
         pytest.skip("Triton kernel isn't working with fp32 input type.")
-    if (
-        QUICK_TEST
-        and (in_dtype == torch.float16 and out_dtype == torch.bfloat16)
+    if QUICK_TEST and (
+        (in_dtype == torch.float16 and out_dtype == torch.bfloat16)
         or (in_dtype == torch.bfloat16 and out_dtype == torch.float16)
     ):
         pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
