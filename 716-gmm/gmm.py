@@ -21,6 +21,7 @@ import argparse
 import itertools
 import logging
 import typing
+from typing import Any, Callable
 
 # PyTorch
 import torch
@@ -424,7 +425,7 @@ def torch_gmm(
 
 @triton.jit
 @typing.no_type_check
-def triton_gmm_kernel(
+def triton_gmm_kernel_core(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -447,6 +448,7 @@ def triton_gmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
+    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
     tl.assume(M > 0)
     tl.assume(K > 0)
@@ -572,9 +574,17 @@ def triton_gmm_kernel(
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
             for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-                k_mask_limit = K - k * BLOCK_SIZE_K
-                lhs = tl.load(lhs_ptrs, mask=offs_k[None, :] < k_mask_limit, other=0)
-                rhs = tl.load(rhs_ptrs, mask=offs_k[:, None] < k_mask_limit, other=0)
+                if K_DIVISIBLE_BY_BLOCK_SIZE_K:
+                    lhs = tl.load(lhs_ptrs)
+                    rhs = tl.load(rhs_ptrs)
+                else:
+                    k_mask_limit = K - k * BLOCK_SIZE_K
+                    lhs = tl.load(
+                        lhs_ptrs, mask=offs_k[None, :] < k_mask_limit, other=0
+                    )
+                    rhs = tl.load(
+                        rhs_ptrs, mask=offs_k[:, None] < k_mask_limit, other=0
+                    )
 
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
@@ -647,6 +657,13 @@ def triton_gmm_kernel(
     tl.device_assert(last_row <= M, "last_row > M (at end)")
 
 
+def heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
+    return {
+        "K_DIVISIBLE_BY_BLOCK_SIZE_K": lambda META: META["K"] % META["BLOCK_SIZE_K"]
+        == 0,
+    }
+
+
 def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
         return [
@@ -673,7 +690,63 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     ]
 
 
+@triton.heuristics(heuristics())
+@triton.jit
+@typing.no_type_check
+def triton_gmm_kernel(
+    # Tensor pointers:
+    lhs_ptr,
+    rhs_ptr,
+    group_sizes_ptr,
+    out_ptr,
+    # Tensor shapes:
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_out_m: int,
+    stride_out_n: int,
+    # Meta-parameters:
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
+):
+    triton_gmm_kernel_core(
+        # Tensor pointers:
+        lhs_ptr,
+        rhs_ptr,
+        group_sizes_ptr,
+        out_ptr,
+        # Tensor shapes:
+        M,
+        K,
+        N,
+        G,
+        # Tensor strides:
+        stride_lhs_m,
+        stride_lhs_k,
+        stride_rhs_g,
+        stride_rhs_k,
+        stride_rhs_n,
+        stride_out_m,
+        stride_out_n,
+        # Meta-parameters:
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+        K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
+    )
+
+
 @triton.autotune(configs=autotune_configs(), key=["M", "K", "N", "G"])
+@triton.heuristics(heuristics())
 @triton.jit
 @typing.no_type_check
 def triton_autotuned_gmm_kernel(
@@ -699,8 +772,9 @@ def triton_autotuned_gmm_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
+    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
-    triton_gmm_kernel(
+    triton_gmm_kernel_core(
         # Tensor pointers:
         lhs_ptr,
         rhs_ptr,
@@ -723,6 +797,7 @@ def triton_autotuned_gmm_kernel(
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
+        K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
     )
 
 
