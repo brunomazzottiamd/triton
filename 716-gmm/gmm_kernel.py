@@ -30,8 +30,8 @@ def triton_gmm_kernel_core(
     N: tl.constexpr,
     G: tl.constexpr,
     # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
+    stride_lhs_m: tl.constexpr,
+    stride_lhs_k: tl.constexpr,
     stride_rhs_g: int,
     stride_rhs_k: int,
     stride_rhs_n: int,
@@ -53,6 +53,9 @@ def triton_gmm_kernel_core(
     tl.assume(N > 0)
     tl.assume(G > 0)
 
+    tl.static_assert(stride_lhs_m > 0)
+    tl.static_assert(stride_lhs_k > 0)
+
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
     tl.assume(stride_rhs_g > 0)
@@ -61,12 +64,14 @@ def triton_gmm_kernel_core(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
+    lhs_step: tl.constexpr = BLOCK_SIZE_K * stride_lhs_k
+    tl.static_assert(lhs_step > 0)
+    tl.assume(lhs_step > 0)
+
     stride_lhs_type = tl.int64
     stride_rhs_type = tl.int64
     stride_out_type = tl.int64
 
-    stride_lhs_m = stride_lhs_m.to(stride_lhs_type)
-    stride_lhs_k = stride_lhs_k.to(stride_lhs_type)
     stride_rhs_g = stride_rhs_g.to(stride_rhs_type)
     stride_rhs_k = stride_rhs_k.to(stride_rhs_type)
     stride_rhs_n = stride_rhs_n.to(stride_rhs_type)
@@ -120,18 +125,18 @@ def triton_gmm_kernel_core(
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
 
             offs_lhs_m = (
-                tile_m.to(stride_lhs_type) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+                tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             ) % m
             tl.device_assert(
                 offs_lhs_m.dtype == stride_lhs_type, "wrong offs_lhs_m type"
             )
             offs_rhs_n = (
-                tile_n.to(stride_rhs_type) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+                tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             ) % N
             tl.device_assert(
                 offs_rhs_n.dtype == stride_lhs_type, "wrong offs_rhs_n type"
             )
-            offs_k = tl.arange(0, BLOCK_SIZE_K)
+            offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
 
             lhs_offs_0 = last_row + offs_lhs_m[:, None]
             tl.device_assert(
@@ -186,11 +191,6 @@ def triton_gmm_kernel_core(
 
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
-                lhs_step = BLOCK_SIZE_K * stride_lhs_k
-                tl.device_assert(lhs_step > 0, "lhs_step <= 0")
-                tl.device_assert(
-                    lhs_step.dtype == stride_lhs_type, "wrong lhs_step type"
-                )
                 lhs_ptrs += lhs_step
 
                 rhs_step = BLOCK_SIZE_K * stride_rhs_k
