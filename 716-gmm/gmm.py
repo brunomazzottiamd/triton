@@ -466,10 +466,10 @@ def triton_gmm_kernel(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: int,
-    K: int,
-    N: int,
-    G: int,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    G: tl.constexpr,
     # Tensor strides:
     stride_lhs_m: int,
     stride_lhs_k: int,
@@ -522,10 +522,10 @@ def triton_autotuned_gmm_kernel(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: int,
-    K: int,
-    N: int,
-    G: int,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    G: tl.constexpr,
     # Tensor strides:
     stride_lhs_m: int,
     stride_lhs_k: int,

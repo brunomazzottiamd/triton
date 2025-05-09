@@ -25,10 +25,10 @@ def triton_gmm_kernel_core(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: int,
-    K: int,
-    N: int,
-    G: int,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    G: tl.constexpr,
     # Tensor strides:
     stride_lhs_m: int,
     stride_lhs_k: int,
@@ -43,6 +43,11 @@ def triton_gmm_kernel_core(
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
+    tl.static_assert(M > 0)
+    tl.static_assert(K > 0)
+    tl.static_assert(N > 0)
+    tl.static_assert(G > 0)
+
     tl.assume(M > 0)
     tl.assume(K > 0)
     tl.assume(N > 0)
