@@ -32,9 +32,9 @@ def triton_gmm_kernel_core(
     # Tensor strides:
     stride_lhs_m: tl.constexpr,
     stride_lhs_k: tl.constexpr,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
+    stride_rhs_g: tl.constexpr,
+    stride_rhs_k: tl.constexpr,
+    stride_rhs_n: int,  # tl.constexpr,
     stride_out_m: int,
     stride_out_n: int,
     # Meta-parameters:
@@ -55,6 +55,9 @@ def triton_gmm_kernel_core(
 
     tl.static_assert(stride_lhs_m > 0)
     tl.static_assert(stride_lhs_k > 0)
+    tl.static_assert(stride_rhs_g > 0)
+    tl.static_assert(stride_rhs_k > 0)
+    # tl.static_assert(stride_rhs_n > 0)
 
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
@@ -65,16 +68,21 @@ def triton_gmm_kernel_core(
     tl.assume(stride_out_n > 0)
 
     lhs_step: tl.constexpr = BLOCK_SIZE_K * stride_lhs_k
+    rhs_step: tl.constexpr = BLOCK_SIZE_K * stride_rhs_k
+
     tl.static_assert(lhs_step > 0)
+    tl.static_assert(rhs_step > 0)
+
     tl.assume(lhs_step > 0)
+    tl.assume(rhs_step > 0)
 
     stride_lhs_type = tl.int64
     stride_rhs_type = tl.int64
     stride_out_type = tl.int64
 
-    stride_rhs_g = stride_rhs_g.to(stride_rhs_type)
-    stride_rhs_k = stride_rhs_k.to(stride_rhs_type)
-    stride_rhs_n = stride_rhs_n.to(stride_rhs_type)
+    stride_rhs_n = stride_rhs_n.to(
+        stride_rhs_type
+    )  # remove if stride_rhs_n is tl.constexpr
     stride_out_m = stride_out_m.to(stride_out_type)
     stride_out_n = stride_out_n.to(stride_out_type)
 
@@ -156,7 +164,7 @@ def triton_gmm_kernel_core(
             )
             lhs_ptrs = lhs_ptr + lhs_offs_3
 
-            rhs_offs_1 = g * stride_rhs_g
+            rhs_offs_1 = g.to(tl.int64) * stride_rhs_g
             tl.device_assert(
                 rhs_offs_1.dtype == stride_rhs_type, "wrong rhs_offs_1 type"
             )
@@ -192,12 +200,6 @@ def triton_gmm_kernel_core(
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
                 lhs_ptrs += lhs_step
-
-                rhs_step = BLOCK_SIZE_K * stride_rhs_k
-                tl.device_assert(rhs_step > 0, "rhs_step <= 0")
-                tl.device_assert(
-                    rhs_step.dtype == stride_rhs_type, "wrong rhs_step type"
-                )
                 rhs_ptrs += rhs_step
 
             acc = acc.to(out_ptr.type.element_ty)
