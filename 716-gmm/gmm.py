@@ -467,8 +467,6 @@ def triton_gmm_kernel(
     out_ptr,
     # Tensor strides (part 1):
     stride_rhs_n: int,  # tl.constexpr,
-    stride_out_m: int,  # tl.constexpr,
-    stride_out_n: int,  # tl.constexpr,
     # Tensor shapes:
     M: tl.constexpr,
     K: tl.constexpr,
@@ -479,6 +477,8 @@ def triton_gmm_kernel(
     stride_lhs_k: tl.constexpr,
     stride_rhs_g: tl.constexpr,
     stride_rhs_k: tl.constexpr,
+    stride_out_m: tl.constexpr,
+    stride_out_n: tl.constexpr,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -493,8 +493,6 @@ def triton_gmm_kernel(
         out_ptr,
         # Tensor strides (part 1):
         stride_rhs_n,
-        stride_out_m,
-        stride_out_n,
         # Tensor shapes:
         M=M,
         K=K,
@@ -505,6 +503,8 @@ def triton_gmm_kernel(
         stride_lhs_k=stride_lhs_k,
         stride_rhs_g=stride_rhs_g,
         stride_rhs_k=stride_rhs_k,
+        stride_out_m=stride_out_m,
+        stride_out_n=stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -525,8 +525,6 @@ def triton_autotuned_gmm_kernel(
     out_ptr,
     # Tensor strides (part 1):
     stride_rhs_n: int,  # tl.constexpr,
-    stride_out_m: int,  # tl.constexpr,
-    stride_out_n: int,  # tl.constexpr,
     # Tensor shapes:
     M: tl.constexpr,
     K: tl.constexpr,
@@ -537,6 +535,8 @@ def triton_autotuned_gmm_kernel(
     stride_lhs_k: tl.constexpr,
     stride_rhs_g: tl.constexpr,
     stride_rhs_k: tl.constexpr,
+    stride_out_m: tl.constexpr,
+    stride_out_n: tl.constexpr,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -551,8 +551,6 @@ def triton_autotuned_gmm_kernel(
         out_ptr,
         # Tensor strides (part 1):
         stride_rhs_n,
-        stride_out_m,
-        stride_out_n,
         # Tensor shapes:
         M=M,
         K=K,
@@ -563,6 +561,8 @@ def triton_autotuned_gmm_kernel(
         stride_lhs_k=stride_lhs_k,
         stride_rhs_g=stride_rhs_g,
         stride_rhs_k=stride_rhs_k,
+        stride_out_m=stride_out_m,
+        stride_out_n=stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -638,8 +638,6 @@ def triton_gmm(
             out,
             # Tensor strides (part 1):
             rhs.stride(2),  # stride_rhs_n
-            out.stride(0),  # stride_out_m
-            out.stride(1),  # stride_out_n
             # Tensor shapes:
             M=M,
             K=K,
@@ -650,6 +648,8 @@ def triton_gmm(
             stride_lhs_k=lhs.stride(1),
             stride_rhs_g=rhs.stride(0),
             stride_rhs_k=rhs.stride(1),
+            stride_out_m=out.stride(0),
+            stride_out_n=out.stride(1),
             # Meta-parameters:
             BLOCK_SIZE_M=block_size_m,
             BLOCK_SIZE_K=block_size_k,
@@ -668,8 +668,6 @@ def triton_gmm(
             out,
             # Tensor strides (part 1):
             rhs.stride(2),  # stride_rhs_n
-            out.stride(0),  # stride_out_m
-            out.stride(1),  # stride_out_n
             # Tensor shapes:
             M=M,
             K=K,
@@ -680,6 +678,8 @@ def triton_gmm(
             stride_lhs_k=lhs.stride(1),
             stride_rhs_g=rhs.stride(0),
             stride_rhs_k=rhs.stride(1),
+            stride_out_m=out.stride(0),
+            stride_out_n=out.stride(1),
         )
 
     return out
