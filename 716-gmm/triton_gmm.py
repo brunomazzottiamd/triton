@@ -49,6 +49,7 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
         # fmt: off
         return [
             triton.Config({"BLOCK_SIZE_M": 128, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256}),
+            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 128}),
             triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256}),
         ]
         # fmt: on
