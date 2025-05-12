@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-pid=$(pgrep --full pytest)
+# This pgrep pattern matches runner, benchmark and unit test.
+pid=$(pgrep --full gmm.py)
 echo "Test PID is ${pid}."
 kill "${pid}"
 rm --force "gpucore.${pid}"
