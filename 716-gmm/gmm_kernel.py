@@ -69,13 +69,17 @@ def triton_gmm_kernel_core(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
+    # tl.cdiv(N, BLOCK_SIZE_N) doesn't play well with tl.constexpr.
+    num_n_tiles: tl.constexpr = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    tl.static_assert(num_n_tiles > 0)
+    tl.assume(num_n_tiles > 0)
+
     lhs_step: tl.constexpr = BLOCK_SIZE_K * stride_lhs_k
-    rhs_step: tl.constexpr = BLOCK_SIZE_K * stride_rhs_k
-
     tl.static_assert(lhs_step > 0)
-    tl.static_assert(rhs_step > 0)
-
     tl.assume(lhs_step > 0)
+
+    rhs_step: tl.constexpr = BLOCK_SIZE_K * stride_rhs_k
+    tl.static_assert(rhs_step > 0)
     tl.assume(rhs_step > 0)
 
     # Current tile. Each program computes multiple tiles of each group.
@@ -101,8 +105,7 @@ def triton_gmm_kernel_core(
         num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
         # num_m_tiles can be zero if group is empty
         tl.device_assert(num_m_tiles >= 0, "num_m_tiles < 0")
-        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
-        tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
+
         num_tiles = num_m_tiles * num_n_tiles
         # num_tiles can be zero if group is empty
         tl.device_assert(num_tiles >= 0, "num_tiles < 0")
