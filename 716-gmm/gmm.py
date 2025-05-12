@@ -31,6 +31,9 @@ from common import (
     SUPPORTED_DTYPES_STR,
     DTYPE_STR,
     DTYPE,
+    TRANS_LHS,
+    TRANS_RHS,
+    TRANS_OUT,
     RNG_SEED,
     NUM_GROUP_SIZES,
     TILING,
@@ -56,6 +59,9 @@ def benchmark_triton_gmm(
     bench_shape: tuple[int, int, int, int] | None = None,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
+    trans_rhs: bool = TRANS_RHS,
+    trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
 ) -> None:
@@ -82,9 +88,16 @@ def benchmark_triton_gmm(
         logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
         lhs, rhs, group_sizes_0 = gen_input(
-            M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
+            M,
+            K,
+            N,
+            G,
+            preferred_element_type=in_dtype,
+            trans_lhs=trans_lhs,
+            trans_rhs=trans_rhs,
+            rng_seed=rng_seed,
         )
-        out = gen_output(M, N, preferred_element_type=out_dtype)
+        out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
         multiple_group_sizes = gen_multiple_group_sizes(
             num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
         )
@@ -143,6 +156,12 @@ def benchmark_triton_gmm(
         out_dtype_str,
         num_group_sizes,
     )
+    logging.info(
+        "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
+        trans_lhs,
+        trans_rhs,
+        trans_out,
+    )
     benchmark.run(show_plots=False, print_data=True)
 
 
@@ -158,6 +177,9 @@ def run_triton_gmm(
     G: int,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
+    trans_rhs: bool = TRANS_RHS,
+    trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
 ) -> None:
@@ -168,15 +190,28 @@ def run_triton_gmm(
         str_from_dtype(out_dtype),
         num_group_sizes,
     )
+    logging.info(
+        "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
+        trans_lhs,
+        trans_rhs,
+        trans_out,
+    )
     logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
     lhs, rhs, group_sizes_0 = gen_input(
-        M, K, N, G, preferred_element_type=in_dtype, rng_seed=rng_seed
+        M,
+        K,
+        N,
+        G,
+        preferred_element_type=in_dtype,
+        trans_lhs=trans_lhs,
+        trans_rhs=trans_rhs,
+        rng_seed=rng_seed,
     )
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
-    out = gen_output(M, N, preferred_element_type=out_dtype)
+    out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     for group_sizes in multiple_group_sizes:
         logging.debug("      group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
@@ -204,6 +239,25 @@ def positive_int(value: str) -> int:
     return int_value
 
 
+def add_trans_arg(
+    parser: argparse.ArgumentParser, arg: str, default_trans: bool
+) -> None:
+    if default_trans:
+        parser.add_argument(
+            f"--no-trans-{arg}",
+            action="store_false",
+            dest=f"trans_{arg}",
+            help=f"don't transpose {arg}, i.e. row-major {arg}",
+        )
+    else:
+        parser.add_argument(
+            f"--trans-{arg}",
+            action="store_true",
+            dest=f"trans_{arg}",
+            help=f"transpose {arg}, i.e. column-major {arg}",
+        )
+
+
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     shape_args = [args.M, args.K, args.N, args.G]
     all_none = all(arg is None for arg in shape_args)
@@ -227,11 +281,13 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="run GMM Triton kernel")
 
+    # Shape
     parser.add_argument("M", type=positive_int, nargs="?", help="number of rows")
     parser.add_argument("K", type=positive_int, nargs="?", help="shared dimension")
     parser.add_argument("N", type=positive_int, nargs="?", help="number of columns")
     parser.add_argument("G", type=positive_int, nargs="?", help="number of groups")
 
+    # Type
     parser.add_argument(
         "--input-type",
         choices=SUPPORTED_DTYPES_STR,
@@ -245,6 +301,12 @@ def parse_args() -> argparse.Namespace:
         help=f"output data type (default: {DTYPE_STR})",
     )
 
+    # Transpose
+    add_trans_arg(parser, "lhs", TRANS_LHS)
+    add_trans_arg(parser, "rhs", TRANS_RHS)
+    add_trans_arg(parser, "out", TRANS_OUT)
+
+    # Input generation
     parser.add_argument(
         "--rng-seed",
         type=int,
@@ -258,6 +320,7 @@ def parse_args() -> argparse.Namespace:
         help=f"number of distinct random group sizes to use (default: {NUM_GROUP_SIZES})",
     )
 
+    # Other arguments
     parser.add_argument(
         "--bench", action="store_true", help="benchmark kernel instead of running it"
     )
@@ -295,6 +358,9 @@ def main() -> None:
             bench_shape=None if all(arg is None for arg in shape) else shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,
+            trans_lhs=args.trans_lhs,
+            trans_rhs=args.trans_rhs,
+            trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
         )
@@ -303,6 +369,9 @@ def main() -> None:
             *shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,
+            trans_lhs=args.trans_lhs,
+            trans_rhs=args.trans_rhs,
+            trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
         )
