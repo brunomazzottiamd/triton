@@ -78,6 +78,12 @@ NUM_GROUP_SIZES: int = 1
 TILING: tuple[int, int, int] = (64, 64, 64)
 
 
+# Default transposition.
+TRANS_LHS: bool = False
+TRANS_RHS: bool = True
+TRANS_OUT: bool = False
+
+
 # Tensor creation functions.
 # ------------------------------------------------------------------------------
 
@@ -221,6 +227,8 @@ def gen_input(
     G: int,
     device: torch.device | str = DEVICE,
     preferred_element_type: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
+    trans_rhs: bool = TRANS_RHS,
     rng_seed: int | None = RNG_SEED,
 ) -> tuple[Tensor, Tensor, Tensor]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
@@ -231,12 +239,20 @@ def gen_input(
     if rng_seed is not None:
         torch.manual_seed(rng_seed)
 
-    lhs = torch.randn((M, K), dtype=torch.float32, device=device).to(
-        preferred_element_type
-    )
-    rhs = torch.randn((G, K, N), dtype=torch.float32, device=device).to(
-        preferred_element_type
-    )
+    if trans_lhs:
+        lhs = torch.randn((K, M), dtype=torch.float32, device=device).T
+    else:
+        lhs = torch.randn((M, K), dtype=torch.float32, device=device)
+    lhs = lhs.to(preferred_element_type)
+
+    if trans_rhs:
+        rhs = torch.randn((G, N, K), dtype=torch.float32, device=device).permute(
+            0, 2, 1
+        )
+    else:
+        rhs = torch.randn((G, K, N), dtype=torch.float32, device=device)
+    rhs = rhs.to(preferred_element_type)
+
     group_sizes = gen_group_sizes(M, G, device=device, rng_seed=None)
 
     return lhs, rhs, group_sizes
@@ -247,11 +263,17 @@ def gen_output(
     N: int,
     device: torch.device | str = DEVICE,
     preferred_element_type: torch.dtype = DTYPE,
+    trans: bool = TRANS_OUT,
 ) -> Tensor:
     assert M > 0, f"Number of out rows M must be positive (M = {M})."
     assert N > 0, f"Number of out columns N must be positive (N = {N})."
 
-    return torch.zeros((M, N), dtype=preferred_element_type, device=device)
+    if trans:
+        out = torch.zeros((N, M), dtype=preferred_element_type, device=device).T
+    else:
+        out = torch.zeros((M, N), dtype=preferred_element_type, device=device)
+
+    return out
 
 
 # Parameter checking functions.
