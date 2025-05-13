@@ -46,7 +46,9 @@ def torch_gmm(
         start_idx = last_row
         end_idx = last_row + m
 
-        out[start_idx:end_idx, :] = lhs[start_idx:end_idx, :] @ rhs[g]
+        out[start_idx:end_idx, :] = (lhs[start_idx:end_idx, :] @ rhs[g]).to(
+            preferred_element_type
+        )
 
         last_row += m
 
