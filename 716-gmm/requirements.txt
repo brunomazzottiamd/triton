@@ -1,0 +1,6 @@
+# This requirements.txt file wasn't tested with pip install!
+# I'm using it just to document dependencies!
+# Base container: rocm/pytorch:rocm6.3.2_ubuntu24.04_py3.12_pytorch_release_2.4.0
+triton==3.3.0+git6116bfe6
+torch==2.4.0a0+git2a26858
+pytest==8.3.2
