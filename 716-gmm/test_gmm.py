@@ -106,7 +106,7 @@ def test_gmm(
         rng_seed=rng_seed,
     )
     # Reduce number of distinct group sizes in quick test.
-    num_group_sizes = 2 if QUICK_TEST else 5
+    num_group_sizes = 1 if QUICK_TEST else 5
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
