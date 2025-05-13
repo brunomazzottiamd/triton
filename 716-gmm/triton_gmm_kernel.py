@@ -25,7 +25,7 @@ def triton_gmm_kernel_core(
     group_sizes_ptr,
     out_ptr,
     # Tensor strides (part 1):
-    stride_rhs_n: int,  # tl.constexpr,
+    stride_rhs_n: int,
     # Tensor shapes:
     M: tl.constexpr,
     K: tl.constexpr,
@@ -36,6 +36,7 @@ def triton_gmm_kernel_core(
     stride_lhs_k: tl.constexpr,
     stride_rhs_g: tl.constexpr,
     stride_rhs_k: tl.constexpr,
+    # stride_rhs_n: tl.constexpr,
     stride_out_m: tl.constexpr,
     stride_out_n: tl.constexpr,
     # Meta-parameters:
