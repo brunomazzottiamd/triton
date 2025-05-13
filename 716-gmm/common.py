@@ -24,7 +24,7 @@ DEVICE: torch.device | str = "cuda"
 
 
 # Supported data types, as strings.
-SUPPORTED_DTYPES_STR: set[str] = {"fp16", "bf16", "fp32"}
+SUPPORTED_DTYPES_STR: set[str] = {"fp16", "bf16"}
 
 
 # Convert string data type to PyTorch data type.
@@ -34,9 +34,7 @@ def dtype_from_str(dtype_str: str) -> torch.dtype:
     assert (
         dtype_str in SUPPORTED_DTYPES_STR
     ), "String data type isn't in set of supported string data types."
-    return {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[
-        dtype_str
-    ]
+    return {"fp16": torch.float16, "bf16": torch.bfloat16}[dtype_str]
 
 
 # Supported data types, as PyTorch types.
@@ -49,7 +47,7 @@ def str_from_dtype(dtype: torch.dtype) -> str:
     assert (
         dtype in SUPPORTED_DTYPES
     ), "PyTorch data type isn't in set of supported PyTorch data types."
-    return {torch.float32: "fp32", torch.float16: "fp16", torch.bfloat16: "bf16"}[dtype]
+    return {torch.float16: "fp16", torch.bfloat16: "bf16"}[dtype]
 
 
 # Default data type, as string.
