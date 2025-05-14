@@ -57,9 +57,7 @@ def triton_gmm_kernel_core(
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
-    # tl.cdiv(N, BLOCK_SIZE_N) doesn't play well with tl.constexpr.
-    # TODO: try tl.cdiv(N, BLOCK_SIZE_N) with non-tl.constexpr.
-    num_n_tiles = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_m_tiles <= 0")
 
     lhs_step = BLOCK_SIZE_K * stride_lhs_k
@@ -102,11 +100,20 @@ def triton_gmm_kernel_core(
             tile_in_mm = tile - last_mm_tile
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-            tile_m = tile_in_mm // num_n_tiles
+            if GROUP_SIZE_M == 1:
+                tile_m = tile_in_mm // num_n_tiles
+                tile_n = tile_in_mm % num_n_tiles
+            else:
+                # Re-order program ID for better L2 performance.
+                num_tiles_in_group = GROUP_SIZE_M * num_n_tiles
+                group_id = tile_in_mm // num_tiles_in_group
+                first_tile_m = group_id * GROUP_SIZE_M
+                group_size_m = min(num_m_tiles - first_tile_m, GROUP_SIZE_M)
+                tile_m = first_tile_m + (tile_in_mm % group_size_m)
+                tile_n = (tile_in_mm % num_tiles_in_group) // group_size_m
+
             tl.device_assert(tile_m >= 0, "tile_m < 0")
             tl.device_assert(tile_m < num_m_tiles, "tile_m >= num_m_tiles")
-
-            tile_n = tile_in_mm % num_n_tiles
             tl.device_assert(tile_n >= 0, "tile_n < 0")
             tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
 
