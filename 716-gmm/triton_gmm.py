@@ -48,22 +48,42 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
         # fmt: off
         return [
-            triton.Config({"BLOCK_SIZE_M": 128, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256}),
-            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 128}),
-            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256}),
+            triton.Config({"BLOCK_SIZE_M": 128, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 1}),
+            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}),
+            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 1}),
         ]
         # fmt: on
     block_sizes = [32, 64, 128, 256]
+    group_size_m_range = [1, 2, 4, 8]
+    num_warps_range = [2, 4, 8]
+    num_stages_range = [1, 2]
+    waves_per_eu_range = [0, 2, 4, 8]
+    matrix_instr_nonkdim_range = [16, 32]
+    kpack_range = [1, 2]
     return [
         triton.Config(
             {
                 "BLOCK_SIZE_M": block_size_m,
                 "BLOCK_SIZE_K": block_size_k,
                 "BLOCK_SIZE_N": block_size_n,
-            }
+                "GROUP_SIZE_M": group_size_m,
+                "waves_per_eu": waves_per_eu,
+                "kpack": kpack,
+                "matrix_instr_nonkdim": matrix_instr_nonkdim,
+            },
+            num_warps=num_warps,
+            num_stages=num_stages,
         )
-        for block_size_m, block_size_k, block_size_n in itertools.product(
-            block_sizes, block_sizes, block_sizes
+        for block_size_m, block_size_k, block_size_n, group_size_m, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim, kpack in itertools.product(
+            block_sizes,
+            block_sizes,
+            block_sizes,
+            group_size_m_range,
+            num_warps_range,
+            num_stages_range,
+            waves_per_eu_range,
+            matrix_instr_nonkdim_range,
+            kpack_range,
         )
     ]
 
@@ -95,6 +115,7 @@ def triton_gmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -111,6 +132,7 @@ def triton_gmm_kernel(
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
+        GROUP_SIZE_M=GROUP_SIZE_M,
     )
     # fmt: on
 
@@ -143,6 +165,7 @@ def triton_autotuned_gmm_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -159,6 +182,7 @@ def triton_autotuned_gmm_kernel(
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
+        GROUP_SIZE_M=GROUP_SIZE_M,
     )
     # fmt: on
 
@@ -234,6 +258,7 @@ def triton_gmm(
             BLOCK_SIZE_M=block_size_m,
             BLOCK_SIZE_K=block_size_k,
             BLOCK_SIZE_N=block_size_n,
+            GROUP_SIZE_M=1,
         )
         # fmt: on
     else:
