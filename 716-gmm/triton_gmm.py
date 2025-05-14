@@ -57,10 +57,10 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     group_size_m_range = [1, 2, 4, 8]
     num_warps_range = [2, 4, 8]
     num_stages_range = [1, 2]
-    waves_per_eu_range = [0, 2, 4, 8]
+    waves_per_eu_range = [0]
     matrix_instr_nonkdim_range = [16, 32]
     kpack_range = [1, 2]
-    return [
+    configs = [
         triton.Config(
             {
                 "BLOCK_SIZE_M": block_size_m,
@@ -86,6 +86,10 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
             kpack_range,
         )
     ]
+    logging.warning(
+        "Using full tuning space, there are %d configurations.", len(configs)
+    )
+    return configs
 
 
 @triton.heuristics(heuristics())
