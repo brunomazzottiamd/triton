@@ -8,17 +8,37 @@ function bench() {
 
 rm --recursive --force "${script_dir}"/*.log
 
-# row-major x row-major
-bench --no-trans-rhs | tee "${script_dir}/bench_rr.log"
+# row-major x row-major => row-major
+bench --no-trans-rhs \
+    | tee "${script_dir}/bench_rrr.log"
 
-# row-major x column-major
-bench | tee "${script_dir}/bench_rc.log"
+# row-major x row-major => column-major
+bench --no-trans-rhs --trans-out \
+    | tee "${script_dir}/bench_rrc.log"
 
-# column-major x row-major
-bench --trans-lhs --no-trans-rhs | tee "${script_dir}/bench_cr.log"
+# row-major x column-major => row-major
+bench \
+    | tee "${script_dir}/bench_rcr.log"
 
-# column-major x column-major
-bench --trans-lhs | tee "${script_dir}/bench_cc.log"
+# row-major x column-major => column-major
+bench --trans-out \
+    | tee "${script_dir}/bench_rcc.log"
+
+# column-major x row-major => row-major
+bench --trans-lhs --no-trans-rhs \
+    | tee "${script_dir}/bench_crr.log"
+
+# column-major x row-major => column-major
+bench --trans-lhs --no-trans-rhs --trans-out \
+    | tee "${script_dir}/bench_crc.log"
+
+# column-major x column-major => row-major
+bench --trans-lhs \
+    | tee "${script_dir}/bench_ccr.log"
+
+# column-major x column-major => column-major
+bench --trans-lhs --trans-out \
+    | tee "${script_dir}/bench_ccc.log"
 
 grep best_config "${script_dir}/bench_"*.log \
     | tr --squeeze-repeats ' ' \
