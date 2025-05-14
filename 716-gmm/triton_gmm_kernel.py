@@ -42,6 +42,7 @@ def triton_gmm_kernel_core(
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
 ):
     tl.assume(M > 0)
     tl.assume(K > 0)
