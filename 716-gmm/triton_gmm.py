@@ -77,54 +77,42 @@ def triton_gmm_kernel(
     rhs_ptr,
     group_sizes_ptr,
     out_ptr,
-    # Tensor strides (part 1):
-    stride_rhs_n: int,
     # Tensor shapes:
-    M: tl.constexpr,
-    K: tl.constexpr,
-    N: tl.constexpr,
-    G: tl.constexpr,
+    M: int,
+    K: int,
+    N: int,
+    G: int,
     # Tensor strides:
-    stride_lhs_m: tl.constexpr,
-    stride_lhs_k: tl.constexpr,
-    stride_rhs_g: tl.constexpr,
-    stride_rhs_k: tl.constexpr,
-    # stride_rhs_n: tl.constexpr,
-    stride_out_m: tl.constexpr,
-    stride_out_n: tl.constexpr,
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_out_m: int,
+    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
+    # fmt: off
     triton_gmm_kernel_core(
         # Tensor pointers:
-        lhs_ptr,
-        rhs_ptr,
-        group_sizes_ptr,
-        out_ptr,
-        # Tensor strides (part 1):
-        stride_rhs_n,
+        lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
-        M=M,
-        K=K,
-        N=N,
-        G=G,
-        # Tensor strides (part 2):
-        stride_lhs_m=stride_lhs_m,
-        stride_lhs_k=stride_lhs_k,
-        stride_rhs_g=stride_rhs_g,
-        stride_rhs_k=stride_rhs_k,
-        # stride_rhs_n=stride_rhs_n,
-        stride_out_m=stride_out_m,
-        stride_out_n=stride_out_n,
+        M, K, N, G,
+        # Tensor strides:
+        stride_lhs_m, stride_lhs_k,
+        stride_rhs_g, stride_rhs_k, stride_rhs_n,
+        stride_out_m, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
     )
+    # fmt: on
 
 
 @triton.autotune(configs=autotune_configs(), key=["M", "K", "N", "G"])
@@ -137,54 +125,42 @@ def triton_autotuned_gmm_kernel(
     rhs_ptr,
     group_sizes_ptr,
     out_ptr,
-    # Tensor strides (part 1):
-    stride_rhs_n: int,
     # Tensor shapes:
-    M: tl.constexpr,
-    K: tl.constexpr,
-    N: tl.constexpr,
-    G: tl.constexpr,
-    # Tensor strides (part 2):
-    stride_lhs_m: tl.constexpr,
-    stride_lhs_k: tl.constexpr,
-    stride_rhs_g: tl.constexpr,
-    stride_rhs_k: tl.constexpr,
-    # stride_rhs_n: tl.constexpr,
-    stride_out_m: tl.constexpr,
-    stride_out_n: tl.constexpr,
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_out_m: int,
+    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
+    # fmt: off
     triton_gmm_kernel_core(
         # Tensor pointers:
-        lhs_ptr,
-        rhs_ptr,
-        group_sizes_ptr,
-        out_ptr,
-        # Tensor strides (part 1):
-        stride_rhs_n,
+        lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
-        M=M,
-        K=K,
-        N=N,
-        G=G,
-        # Tensor strides (part 2):
-        stride_lhs_m=stride_lhs_m,
-        stride_lhs_k=stride_lhs_k,
-        stride_rhs_g=stride_rhs_g,
-        stride_rhs_k=stride_rhs_k,
-        # stride_rhs_n=stride_rhs_n,
-        stride_out_m=stride_out_m,
-        stride_out_n=stride_out_n,
+        M, K, N, G,
+        # Tensor strides:
+        stride_lhs_m, stride_lhs_k,
+        stride_rhs_g, stride_rhs_k, stride_rhs_n,
+        stride_out_m, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
     )
+    # fmt: on
 
 
 def num_sms(device: torch.device | str = DEVICE) -> int:
@@ -246,58 +222,34 @@ def triton_gmm(
             block_size_n,
         )
         grid = compute_grid(N, block_size_m, block_size_n, group_sizes)
+        # fmt: off
         triton_gmm_kernel[grid](
             # Tensor pointers:
-            lhs,
-            rhs,
-            group_sizes,
-            out,
-            # Tensor strides (part 1):
-            rhs.stride(2),
+            lhs, rhs, group_sizes, out,
             # Tensor shapes:
-            M=M,
-            K=K,
-            N=N,
-            G=G,
-            # Tensor strides (part 2):
-            stride_lhs_m=lhs.stride(0),
-            stride_lhs_k=lhs.stride(1),
-            stride_rhs_g=rhs.stride(0),
-            stride_rhs_k=rhs.stride(1),
-            # stride_rhs_n=rhs.stride(2),
-            stride_out_m=out.stride(0),
-            stride_out_n=out.stride(1),
+            M, K, N, G,
+            # Tensor strides:
+            *lhs.stride(), *rhs.stride(), *out.stride(),
             # Meta-parameters:
             BLOCK_SIZE_M=block_size_m,
             BLOCK_SIZE_K=block_size_k,
             BLOCK_SIZE_N=block_size_n,
         )
+        # fmt: on
     else:
         logging.debug("Running autotuned kernel.")
         autotuned_grid = lambda META: compute_grid(
             N, META["BLOCK_SIZE_M"], META["BLOCK_SIZE_N"], group_sizes
         )
+        # fmt: off
         triton_autotuned_gmm_kernel[autotuned_grid](
             # Tensor pointers:
-            lhs,
-            rhs,
-            group_sizes,
-            out,
-            # Tensor strides (part 1):
-            rhs.stride(2),
+            lhs, rhs, group_sizes, out,
             # Tensor shapes:
-            M=M,
-            K=K,
-            N=N,
-            G=G,
-            # Tensor strides (part 2):
-            stride_lhs_m=lhs.stride(0),
-            stride_lhs_k=lhs.stride(1),
-            stride_rhs_g=rhs.stride(0),
-            stride_rhs_k=rhs.stride(1),
-            # stride_rhs_n=rhs.stride(2),
-            stride_out_m=out.stride(0),
-            stride_out_n=out.stride(1),
+            M, K, N, G,
+            # Tensor strides:
+            *lhs.stride(), *rhs.stride(), *out.stride(),
         )
+        # fmt: on
 
     return out

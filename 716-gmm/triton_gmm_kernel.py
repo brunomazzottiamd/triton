@@ -24,44 +24,29 @@ def triton_gmm_kernel_core(
     rhs_ptr,
     group_sizes_ptr,
     out_ptr,
-    # Tensor strides (part 1):
-    stride_rhs_n: int,
     # Tensor shapes:
-    M: tl.constexpr,
-    K: tl.constexpr,
-    N: tl.constexpr,
-    G: tl.constexpr,
-    # Tensor strides (part 2):
-    stride_lhs_m: tl.constexpr,
-    stride_lhs_k: tl.constexpr,
-    stride_rhs_g: tl.constexpr,
-    stride_rhs_k: tl.constexpr,
-    # stride_rhs_n: tl.constexpr,
-    stride_out_m: tl.constexpr,
-    stride_out_n: tl.constexpr,
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_m: int,
+    stride_lhs_k: int,
+    stride_rhs_g: int,
+    stride_rhs_k: int,
+    stride_rhs_n: int,
+    stride_out_m: int,
+    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
 ):
-    tl.static_assert(M > 0)
-    tl.static_assert(K > 0)
-    tl.static_assert(N > 0)
-    tl.static_assert(G > 0)
-
     tl.assume(M > 0)
     tl.assume(K > 0)
     tl.assume(N > 0)
     tl.assume(G > 0)
-
-    tl.static_assert(stride_lhs_m > 0)
-    tl.static_assert(stride_lhs_k > 0)
-    tl.static_assert(stride_rhs_g > 0)
-    tl.static_assert(stride_rhs_k > 0)
-    # tl.static_assert(stride_rhs_n > 0)
-    tl.static_assert(stride_out_m > 0)
-    tl.static_assert(stride_out_n > 0)
 
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
@@ -72,17 +57,15 @@ def triton_gmm_kernel_core(
     tl.assume(stride_out_n > 0)
 
     # tl.cdiv(N, BLOCK_SIZE_N) doesn't play well with tl.constexpr.
-    num_n_tiles: tl.constexpr = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
-    tl.static_assert(num_n_tiles > 0)
-    tl.assume(num_n_tiles > 0)
+    # TODO: try tl.cdiv(N, BLOCK_SIZE_N) with non-tl.constexpr.
+    num_n_tiles = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    tl.device_assert(num_n_tiles > 0, "num_m_tiles <= 0")
 
-    lhs_step: tl.constexpr = BLOCK_SIZE_K * stride_lhs_k
-    tl.static_assert(lhs_step > 0)
-    tl.assume(lhs_step > 0)
+    lhs_step = BLOCK_SIZE_K * stride_lhs_k
+    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-    rhs_step: tl.constexpr = BLOCK_SIZE_K * stride_rhs_k
-    tl.static_assert(rhs_step > 0)
-    tl.assume(rhs_step > 0)
+    rhs_step = BLOCK_SIZE_K * stride_rhs_k
+    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
@@ -117,9 +100,11 @@ def triton_gmm_kernel_core(
             # Figure out tile coordinates in current MM problem.
             tile_in_mm = tile - last_mm_tile
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
+
             tile_m = tile_in_mm // num_n_tiles
             tl.device_assert(tile_m >= 0, "tile_m < 0")
             tl.device_assert(tile_m < num_m_tiles, "tile_m >= num_m_tiles")
+
             tile_n = tile_in_mm % num_n_tiles
             tl.device_assert(tile_n >= 0, "tile_n < 0")
             tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
