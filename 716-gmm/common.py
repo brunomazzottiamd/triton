@@ -323,9 +323,12 @@ def is_power_of_2(x: int) -> bool:
 
 
 def get_tiling(
-    M: int, K: int, N: int, tiling: tuple[int, int, int]
+    group_sizes: Tensor, K: int, N: int, tiling: tuple[int, int, int]
 ) -> tuple[int, int, int]:
-    assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
+    max_group_size = torch.max(group_sizes).item()
+    assert (
+        max_group_size > 0
+    ), f"The size of the largest group must be positive (it's {max_group_size})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
     assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
@@ -333,7 +336,7 @@ def get_tiling(
     block_size_m, block_size_k, block_size_n = tiling
 
     # Pick smaller block sizes for toy shapes.
-    block_size_m = min(triton.next_power_of_2(M), block_size_m)
+    block_size_m = min(triton.next_power_of_2(max_group_size), block_size_m)
     block_size_k = min(triton.next_power_of_2(K), block_size_k)
     block_size_n = min(triton.next_power_of_2(N), block_size_n)
 
