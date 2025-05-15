@@ -57,39 +57,33 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     group_size_m_range = [1, 2, 4, 8]
     num_warps_range = [2, 4, 8]
     num_stages_range = [1, 2]
-    waves_per_eu_range = [0]
-    matrix_instr_nonkdim_range = [16, 32]
-    kpack_range = [1, 2]
-    configs = [
+    # waves_per_eu_range = [0, 2, 4, 8]
+    # matrix_instr_nonkdim_range = [16, 32]
+    # kpack_range = [1, 2]
+    # 1536 configurations per shape
+    return [
         triton.Config(
             {
                 "BLOCK_SIZE_M": block_size_m,
                 "BLOCK_SIZE_K": block_size_k,
                 "BLOCK_SIZE_N": block_size_n,
                 "GROUP_SIZE_M": group_size_m,
-                "waves_per_eu": waves_per_eu,
-                "kpack": kpack,
-                "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                # "waves_per_eu": waves_per_eu,
+                # "kpack": kpack,
+                # "matrix_instr_nonkdim": matrix_instr_nonkdim,
             },
             num_warps=num_warps,
             num_stages=num_stages,
         )
-        for block_size_m, block_size_k, block_size_n, group_size_m, num_warps, num_stages, waves_per_eu, matrix_instr_nonkdim, kpack in itertools.product(
+        for block_size_m, block_size_k, block_size_n, group_size_m, num_warps, num_stages in itertools.product(
             block_sizes,
             block_sizes,
             block_sizes,
             group_size_m_range,
             num_warps_range,
             num_stages_range,
-            waves_per_eu_range,
-            matrix_instr_nonkdim_range,
-            kpack_range,
         )
     ]
-    logging.warning(
-        "Using full tuning space, there are %d configurations.", len(configs)
-    )
-    return configs
 
 
 @triton.heuristics(heuristics())
