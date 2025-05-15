@@ -352,7 +352,7 @@ def get_tiling(
     assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
     if group_sizes is not None:
-        max_group_size = torch.max(group_sizes).item()
+        max_group_size = int(torch.max(group_sizes).item())
         assert (
             max_group_size > 0
         ), f"The size of the largest group must be positive (it's {max_group_size})."
