@@ -236,7 +236,7 @@ def triton_gmm(
     )
 
     if tiling is not None:
-        block_size_m, block_size_k, block_size_n = get_tiling(M, K, N, tiling)
+        block_size_m, block_size_k, block_size_n = get_tiling(group_sizes, K, N, tiling)
         logging.debug(
             "Running kernel with tiling (BLOCK_SIZE_M = %d, BLOCK_SIZE_K = %d, BLOCK_SIZE_N = %d).",
             block_size_m,
