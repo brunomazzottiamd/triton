@@ -88,7 +88,29 @@ class Config:
 # Database of best kernel configurations.
 # ------------------------------------------------------------------------------
 
-BEST_CONFIGS: dict[ConfigKey, Config] = {}
+
+# fmt: off
+BEST_CONFIGS: dict[ConfigKey, Config] = {
+    # bf16 bf16 TN
+  # ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(),
+  # ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(),
+  # ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(),
+  # ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(),
+  # ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(),
+    # bf16 bf16 NN
+  # ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(),
+  # ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(),
+  # ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(),
+  # ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(),
+  # ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(),
+    # bf16 bf16 NT
+  # ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(),
+  # ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+  # ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(),
+  # ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+  # ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+}
+# fmt: on
 
 
 # Selection of best kernel configuration.

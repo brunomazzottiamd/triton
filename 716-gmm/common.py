@@ -85,7 +85,7 @@ assert all(
 ), "Invalid default tiling."
 
 
-# Default transposition.
+# Default transposition (TN).
 TRANS_LHS: bool = False
 TRANS_RHS: bool = True
 TRANS_OUT: bool = False
