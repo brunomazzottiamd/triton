@@ -48,7 +48,7 @@ from common import (
 from test_gmm import REAL_SHAPES
 
 # Triton GMM implementations
-from triton_gmm import triton_gmm, triton_autotuned_gmm_kernel
+from triton_gmm import triton_gmm, autotune_configs, triton_autotuned_gmm_kernel
 
 
 # Benchmark.
@@ -150,6 +150,12 @@ def benchmark_triton_gmm(
         return p50_tflops, p20_tflops, p80_tflops
 
     logging.info("Benchmarking Triton GMM kernel:")
+    num_configs = len(autotune_configs())
+    if num_configs > 50:
+        logging.warning(
+            "Warning: using full tuning space, there are %d configurations.",
+            num_configs,
+        )
     logging.info(
         "  input_type = %s, output_type = %s, num_group_sizes = %d",
         in_dtype_str,
