@@ -37,15 +37,13 @@ from common import (
     RNG_SEED,
     NUM_GROUP_SIZES,
     TILING,
+    REAL_SHAPES,
     dtype_from_str,
     str_from_dtype,
     gen_input,
     gen_multiple_group_sizes,
     gen_output,
 )
-
-# Test module
-from test_gmm import REAL_SHAPES
 
 # Triton GMM implementations
 from triton_gmm import triton_gmm, autotune_configs, triton_autotuned_gmm_kernel
