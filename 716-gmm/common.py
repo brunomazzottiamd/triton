@@ -82,6 +82,19 @@ TRANS_RHS: bool = True
 TRANS_OUT: bool = False
 
 
+# Real GMM shapes, used by real models.
+# fmt: off
+REAL_SHAPES: list[tuple[int, int, int, int]] = [
+    #      M,     K,     N,   G
+    (  49152,  1408,  2048,  64),  # deepseekv2-16B
+    (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
+    ( 393216,  2048,  1408,  64),  # deepseekv2-16B
+    (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
+    (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
+]
+# fmt: on
+
+
 # Tensor creation functions.
 # ------------------------------------------------------------------------------
 

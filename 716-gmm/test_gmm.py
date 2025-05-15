@@ -15,6 +15,7 @@ import pytest
 from common import (
     SUPPORTED_DTYPES_STR,
     TILING,
+    REAL_SHAPES,
     dtype_from_str,
     gen_input,
     gen_multiple_group_sizes,
@@ -37,19 +38,6 @@ TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
     ( 10,    2,    3,   4),
     ( 32,   16,    8,   4),  # Test 1
     (512, 4096, 2048, 160),  # Test 2
-]
-# fmt: on
-
-
-# Real GMM shapes, used by real models.
-# fmt: off
-REAL_SHAPES: list[tuple[int, int, int, int]] = [
-    #      M,     K,     N,   G
-    (  49152,  1408,  2048,  64),  # deepseekv2-16B
-    (3145728,  2048,  1408,   8),  # deepseekv2-16B (IT'S BIG! I was getting core dump with this shape! lhs => 12 GB, out => 8.25 GB)
-    ( 393216,  2048,  1408,  64),  # deepseekv2-16B
-    (  32768,  6144, 16384,   8),  # Mixtral 8x22B proxy model
-    (  32768, 16384,  6144,   8),  # Mixtral 8x22B proxy model
 ]
 # fmt: on
 
