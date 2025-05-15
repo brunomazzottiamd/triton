@@ -92,7 +92,7 @@ class Config:
 # fmt: off
 BEST_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
-  # ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m=64, block_size_k=32, block_size_n=256, group_size_m=1, num_warps=8, num_stages=2),
   # ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(),
   # ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(),
   # ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(),
