@@ -72,8 +72,17 @@ UNUSED_EXPERTS_PROB: float = 0.1
 NUM_GROUP_SIZES: int = 1
 
 
-# TODO: Figure out a sensible tiling default.
+# Defaut tiling.
+
+
+def is_power_of_2(x: int) -> bool:
+    return (x > 0) and (x & (x - 1) == 0)
+
+
 TILING: tuple[int, int, int] = (64, 64, 64)
+assert all(
+    is_power_of_2(tiling_dim) for tiling_dim in TILING
+), "Invalid default tiling."
 
 
 # Default transposition.
@@ -331,25 +340,28 @@ def get_shape_from_input(
     return M, K, N, G
 
 
-def is_power_of_2(x: int) -> bool:
-    return (x > 0) and (x & (x - 1) == 0)
-
-
 def get_tiling(
-    group_sizes: Tensor, K: int, N: int, tiling: tuple[int, int, int]
+    M: int,
+    K: int,
+    N: int,
+    tiling: tuple[int, int, int],
+    group_sizes: Tensor | None = None,
 ) -> tuple[int, int, int]:
-    max_group_size = torch.max(group_sizes).item()
-    assert (
-        max_group_size > 0
-    ), f"The size of the largest group must be positive (it's {max_group_size})."
+    assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
     assert N > 0, f"Number of rhs columns N must be positive (N = {N})."
     assert len(tiling) == 3, f"tiling must have 3 dimensions (it's = {len(tiling)})."
+    if group_sizes is not None:
+        max_group_size = torch.max(group_sizes).item()
+        assert (
+            max_group_size > 0
+        ), f"The size of the largest group must be positive (it's {max_group_size})."
+        M = min(M, max_group_size)
 
     block_size_m, block_size_k, block_size_n = tiling
 
     # Pick smaller block sizes for toy shapes.
-    block_size_m = min(triton.next_power_of_2(max_group_size), block_size_m)
+    block_size_m = min(triton.next_power_of_2(M), block_size_m)
     block_size_k = min(triton.next_power_of_2(K), block_size_k)
     block_size_n = min(triton.next_power_of_2(N), block_size_n)
 
