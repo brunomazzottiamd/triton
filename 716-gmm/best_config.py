@@ -99,7 +99,7 @@ BEST_CONFIGS: dict[ConfigKey, Config] = {
   # ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(),
   # ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(),
     # bf16 bf16 NN
-  # ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=128, block_size_k=32, block_size_n=128, group_size_m=2, num_warps=8),
   # ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(),
   # ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(),
   # ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(),
