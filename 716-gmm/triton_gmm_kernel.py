@@ -29,14 +29,10 @@ def triton_gmm_kernel_core(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
+    # Tensor leading dimensions:
+    ld_lhs: int,
+    ld_rhs: int,
+    ld_out: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -44,30 +40,37 @@ def triton_gmm_kernel_core(
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
     GRID_DIM: tl.constexpr,
+    TRANS_LHS: tl.constexpr,
+    TRANS_RHS: tl.constexpr,
+    TRANS_OUT: tl.constexpr,
 ):
     tl.assume(M > 0)
     tl.assume(K > 0)
     tl.assume(N > 0)
     tl.assume(G > 0)
 
-    tl.assume(stride_lhs_m > 0)
-    tl.assume(stride_lhs_k > 0)
-    tl.assume(stride_rhs_g > 0)
-    tl.assume(stride_rhs_k > 0)
-    tl.assume(stride_rhs_n > 0)
-    tl.assume(stride_out_m > 0)
-    tl.assume(stride_out_n > 0)
+    tl.assume(ld_lhs > 0)
+    tl.assume(ld_rhs > 0)
+    tl.assume(ld_out > 0)
 
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_m_tiles <= 0")
 
-    # stride_lhs_k = 1 when lhs is row-major
-    lhs_step = BLOCK_SIZE_K * stride_lhs_k
-    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
+    if TRANS_LHS:
+        lhs_step = BLOCK_SIZE_K * ld_lhs
+        tl.device_assert(lhs_step > 0, "lhs_step <= 0")
+    else:
+        # stride_lhs_k = 1 when lhs is row-major
+        lhs_step: tl.constexpr = BLOCK_SIZE_K
+        tl.static_assert(lhs_step > 0)
 
-    # stride_rhs_k = 1 when rhs is column-major
-    rhs_step = BLOCK_SIZE_K * stride_rhs_k
-    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
+    if TRANS_RHS:
+        # stride_rhs_k = 1 when rhs is column-major
+        rhs_step: tl.constexpr = BLOCK_SIZE_K
+        tl.static_assert(rhs_step > 0)
+    else:
+        rhs_step = BLOCK_SIZE_K * ld_rhs
+        tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
@@ -128,37 +131,69 @@ def triton_gmm_kernel_core(
             offs_lhs_m = (
                 tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             ) % m
-            tl.device_assert(offs_lhs_m.dtype == tl.int64, "wrong offs_lhs_m type")
             offs_rhs_n = (
                 tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             ) % N
-            tl.device_assert(offs_rhs_n.dtype == tl.int64, "wrong offs_rhs_n type")
             offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
 
-            lhs_offs_0 = last_row + offs_lhs_m[:, None]
-            tl.device_assert(lhs_offs_0.dtype == tl.int64, "wrong lhs_offs_0 type")
-            # stride_lhs_m = 1 when lhs is column-major [A = tl.multiple_of(A, (1, 16))]
-            lhs_offs_1 = lhs_offs_0 * stride_lhs_m
-            tl.device_assert(lhs_offs_1.dtype == tl.int64, "wrong lhs_offs_1 type")
-            # stride_lhs_k = 1 when lhs is row-major [A = tl.multiple_of(A, (16, 1))]
-            lhs_offs_2 = offs_k[None, :] * stride_lhs_k
-            tl.device_assert(lhs_offs_2.dtype == tl.int64, "wrong lhs_offs_2 type")
-            lhs_offs_3 = lhs_offs_1 + lhs_offs_2
-            tl.device_assert(lhs_offs_3.dtype == tl.int64, "wrong lhs_offs_3 type")
-            lhs_ptrs = lhs_ptr + lhs_offs_3
+            # lhs_offs_0 = last_row + offs_lhs_m[:, None]
+            # tl.device_assert(lhs_offs_0.dtype == tl.int64, "wrong lhs_offs_0 type")
+            # # stride_lhs_m = 1 when lhs is column-major [A = tl.multiple_of(A, (1, 16))]
+            # lhs_offs_1 = lhs_offs_0 * stride_lhs_m
+            # tl.device_assert(lhs_offs_1.dtype == tl.int64, "wrong lhs_offs_1 type")
+            # # stride_lhs_k = 1 when lhs is row-major [A = tl.multiple_of(A, (16, 1))]
+            # lhs_offs_2 = offs_k[None, :] * stride_lhs_k
+            # tl.device_assert(lhs_offs_2.dtype == tl.int64, "wrong lhs_offs_2 type")
+            # lhs_offs_3 = lhs_offs_1 + lhs_offs_2
+            # tl.device_assert(lhs_offs_3.dtype == tl.int64, "wrong lhs_offs_3 type")
+            # lhs_ptrs = lhs_ptr + lhs_offs_3
 
-            # stride_rhs_g is always K * N
-            rhs_offs_1 = g.to(tl.int64) * stride_rhs_g
-            tl.device_assert(rhs_offs_1.dtype == tl.int64, "wrong rhs_offs_1 type")
-            # stride_rhs_k = 1 when rhs is column-major [???]
-            rhs_offs_2 = offs_k[:, None] * stride_rhs_k
-            tl.device_assert(rhs_offs_2.dtype == tl.int64, "wrong rhs_offs_2 type")
-            # stride_rhs_n = 1 when rhs is row-major [???]
-            rhs_offs_3 = offs_rhs_n[None, :] * stride_rhs_n
-            tl.device_assert(rhs_offs_3.dtype == tl.int64, "wrong rhs_offs_3 type")
-            rhs_offs_4 = rhs_offs_1 + rhs_offs_2 + rhs_offs_3
-            tl.device_assert(rhs_offs_4.dtype == tl.int64, "wrong rhs_offs_4 type")
-            rhs_ptrs = rhs_ptr + rhs_offs_4
+            if TRANS_LHS:
+                # stride_lhs_m = 1 when lhs is column-major
+                lhs_ptrs = (
+                    lhs_ptr
+                    + (last_row + offs_lhs_m[:, None])
+                    + offs_k[None, :] * ld_lhs
+                )
+                # lhs_ptrs = tl.multiple_of(lhs_ptrs, (1, 16))
+            else:
+                # stride_lhs_k = 1 when lhs is row-major
+                lhs_ptrs = (
+                    lhs_ptr
+                    + (last_row + offs_lhs_m[:, None]) * ld_lhs
+                    + offs_k[None, :]
+                )
+                # lhs_ptrs = tl.multiple_of(lhs_ptrs, (16, 1))
+
+            # # stride_rhs_g is always K * N
+            # rhs_offs_1 = g.to(tl.int64) * stride_rhs_g
+            # tl.device_assert(rhs_offs_1.dtype == tl.int64, "wrong rhs_offs_1 type")
+            # # stride_rhs_k = 1 when rhs is column-major [???]
+            # rhs_offs_2 = offs_k[:, None] * stride_rhs_k
+            # tl.device_assert(rhs_offs_2.dtype == tl.int64, "wrong rhs_offs_2 type")
+            # # stride_rhs_n = 1 when rhs is row-major [???]
+            # rhs_offs_3 = offs_rhs_n[None, :] * stride_rhs_n
+            # tl.device_assert(rhs_offs_3.dtype == tl.int64, "wrong rhs_offs_3 type")
+            # rhs_offs_4 = rhs_offs_1 + rhs_offs_2 + rhs_offs_3
+            # tl.device_assert(rhs_offs_4.dtype == tl.int64, "wrong rhs_offs_4 type")
+            # rhs_ptrs = rhs_ptr + rhs_offs_4
+
+            if TRANS_RHS:
+                # stride_rhs_k = 1 when rhs is column-major
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None]
+                    + offs_rhs_n[None, :] * ld_rhs
+                )
+            else:
+                # stride_rhs_n = 1 when rhs is row-major
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None] * ld_rhs
+                    + offs_rhs_n[None, :]
+                )
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
@@ -183,21 +218,34 @@ def triton_gmm_kernel_core(
             acc = acc.to(out_ptr.type.element_ty)
 
             offs_out_m = tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            tl.device_assert(offs_out_m.dtype == tl.int64, "wrong offs_out_m type")
             offs_out_n = tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            tl.device_assert(offs_out_n.dtype == tl.int64, "wrong offs_out_n type")
 
-            out_offs_0 = last_row + offs_out_m[:, None]
-            tl.device_assert(out_offs_0.dtype == tl.int64, "wrong out_offs_0 type")
-            # stride_out_m = 1 when out is column-major
-            out_offs_1 = out_offs_0 * stride_out_m
-            tl.device_assert(out_offs_1.dtype == tl.int64, "wrong out_offs_1 type")
-            # stride_out_n = 1 when out is row-major
-            out_offs_2 = offs_out_n[None, :] * stride_out_n
-            tl.device_assert(out_offs_2.dtype == tl.int64, "wrong out_offs_2 type")
-            out_offs_3 = out_offs_1 + out_offs_2
-            tl.device_assert(out_offs_3.dtype == tl.int64, "wrong out_offs_3 type")
-            out_ptrs = out_ptr + out_offs_3
+            # out_offs_0 = last_row + offs_out_m[:, None]
+            # tl.device_assert(out_offs_0.dtype == tl.int64, "wrong out_offs_0 type")
+            # # stride_out_m = 1 when out is column-major
+            # out_offs_1 = out_offs_0 * stride_out_m
+            # tl.device_assert(out_offs_1.dtype == tl.int64, "wrong out_offs_1 type")
+            # # stride_out_n = 1 when out is row-major
+            # out_offs_2 = offs_out_n[None, :] * stride_out_n
+            # tl.device_assert(out_offs_2.dtype == tl.int64, "wrong out_offs_2 type")
+            # out_offs_3 = out_offs_1 + out_offs_2
+            # tl.device_assert(out_offs_3.dtype == tl.int64, "wrong out_offs_3 type")
+            # out_ptrs = out_ptr + out_offs_3
+
+            if TRANS_OUT:
+                # stride_out_m = 1 when out is column-major
+                out_ptrs = (
+                    out_ptr
+                    + (last_row + offs_out_m[:, None])
+                    + offs_out_n[None, :] * ld_out
+                )
+            else:
+                # stride_out_n = 1 when out is row-major
+                out_ptrs = (
+                    out_ptr
+                    + (last_row + offs_out_m[:, None]) * ld_out
+                    + offs_out_n[None, :]
+                )
 
             tl.store(
                 out_ptrs,
