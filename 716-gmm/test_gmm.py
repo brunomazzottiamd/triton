@@ -75,13 +75,16 @@ def test_gmm(
     trans_out = trans_out_str.replace("tout", "") == "T"
     rng_seed = int(rng_seed_str.replace("rng", ""))
 
-    # Skip conditions:
-    if QUICK_TEST and (
-        (in_dtype == torch.float16 and out_dtype == torch.bfloat16)
-        or (in_dtype == torch.bfloat16 and out_dtype == torch.float16)
-    ):
-        pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
-        # Important notice: mixed fp16 / bf16 types work correctly!
+    # Quick test skip conditions:
+    if QUICK_TEST:
+        if (in_dtype == torch.float16 and out_dtype == torch.bfloat16) or (
+            in_dtype == torch.bfloat16 and out_dtype == torch.float16
+        ):
+            pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
+        if trans_out:
+            pytest.skip("Skipping transposed output matrix to speed up test execution.")
+        if (trans_lhs, trans_rhs) not in {(False, True), (True, False), (True, True)}:
+            pytest.skip("Skipping non-{TN,NT,NN} layouts speed up test execution.")
 
     lhs, rhs, group_sizes_0 = gen_input(
         M,
