@@ -27,6 +27,7 @@ from common import (
     get_shape_from_input,
     get_tiling,
     get_output,
+    get_transposition,
 )
 
 # GMM kernel
@@ -112,20 +113,19 @@ def triton_gmm_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
+    # Tensor leading dimensions:
+    ld_lhs: int,
+    ld_rhs: int,
+    ld_out: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    TRANS_LHS: tl.constexpr,
+    TRANS_RHS: tl.constexpr,
+    TRANS_OUT: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -133,16 +133,17 @@ def triton_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
+        # Tensor leading dimensions:
+        ld_lhs, ld_rhs, ld_out,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE_M=GROUP_SIZE_M,
+        TRANS_LHS=TRANS_LHS,
+        TRANS_RHS=TRANS_RHS,
+        TRANS_OUT=TRANS_OUT,
     )
     # fmt: on
 
@@ -162,20 +163,19 @@ def triton_autotuned_gmm_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
+    # Tensor leading dimensions:
+    ld_lhs: int,
+    ld_rhs: int,
+    ld_out: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    TRANS_LHS: tl.constexpr,
+    TRANS_RHS: tl.constexpr,
+    TRANS_OUT: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -183,16 +183,17 @@ def triton_autotuned_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
+        # Tensor leading dimensions:
+        ld_lhs, ld_rhs, ld_out,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE_M=GROUP_SIZE_M,
+        TRANS_LHS=TRANS_LHS,
+        TRANS_RHS=TRANS_RHS,
+        TRANS_OUT=TRANS_OUT,
     )
     # fmt: on
 
@@ -237,6 +238,7 @@ def triton_gmm(
     tiling: tuple[int, int, int] | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
+
     M, K, N, G = get_shape_from_input(lhs, rhs, group_sizes)
 
     out = get_output(
@@ -245,6 +247,10 @@ def triton_gmm(
         device=lhs.device,
         preferred_element_type=preferred_element_type,
         existing_out=existing_out,
+    )
+
+    trans_lhs, trans_rhs, trans_out, ld_lhs, ld_rhs, ld_out = get_transposition(
+        lhs, rhs, out
     )
 
     if tiling is not None:
@@ -264,13 +270,16 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
+            # Tensor leading dimensions:
+            ld_lhs, ld_rhs, ld_out,
             # Meta-parameters:
             BLOCK_SIZE_M=block_size_m,
             BLOCK_SIZE_K=block_size_k,
             BLOCK_SIZE_N=block_size_n,
             GROUP_SIZE_M=1,
+            TRANS_LHS=trans_lhs,
+            TRANS_RHS=trans_rhs,
+            TRANS_OUT=trans_out,
         )
         # fmt: on
     else:
@@ -284,8 +293,15 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
+            # Tensor leading dimensions:
+            ld_lhs, ld_rhs, ld_out,
+            # Meta-parameters:
+            BLOCK_SIZE_M=block_size_m,
+            BLOCK_SIZE_K=block_size_k,
+            BLOCK_SIZE_N=block_size_n,
+            TRANS_LHS=trans_lhs,
+            TRANS_RHS=trans_rhs,
+            TRANS_OUT=trans_out,
         )
         # fmt: on
 
