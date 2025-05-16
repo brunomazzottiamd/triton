@@ -28,7 +28,7 @@ from common import (
 # ------------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ConfigKey:
     M: int
     K: int
@@ -55,7 +55,7 @@ class ConfigKey:
         ), "Output type must be supported by the kernel."
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class Config:
     block_size_m: int = TILING[0]
     block_size_k: int = TILING[1]
@@ -89,6 +89,7 @@ class Config:
 # ------------------------------------------------------------------------------
 
 
+# Tuning database for gfx942.
 # fmt: off
 BEST_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
