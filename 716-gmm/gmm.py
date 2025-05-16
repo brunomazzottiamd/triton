@@ -154,6 +154,11 @@ def benchmark_triton_gmm(
             "Warning: using full tuning space, there are %d configurations.",
             num_configs,
         )
+    else:
+        logging.info(
+            "Using reduced tuning space, there are %d configurations.",
+            num_configs,
+        )
     logging.info(
         "  input_type = %s, output_type = %s, num_group_sizes = %d",
         in_dtype_str,
