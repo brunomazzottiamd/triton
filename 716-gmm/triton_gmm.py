@@ -32,6 +32,9 @@ from common import (
 # GMM kernel
 from triton_gmm_kernel import triton_gmm_kernel_core
 
+# Tuning database
+from best_config import BEST_CONFIGS
+
 
 # Triton GMM implementation.
 # ------------------------------------------------------------------------------
@@ -46,13 +49,22 @@ def heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
 
 def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
-        # fmt: off
+        # Grab all distinct configs from tuning database.
         return [
-            triton.Config({"BLOCK_SIZE_M": 128, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 1}),
-            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}),
-            triton.Config({"BLOCK_SIZE_M": 256, "BLOCK_SIZE_K": 32, "BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 1}),
+            triton.Config(
+                {
+                    "BLOCK_SIZE_M": config.block_size_m,
+                    "BLOCK_SIZE_K": config.block_size_k,
+                    "BLOCK_SIZE_N": config.block_size_n,
+                    "GROUP_SIZE_M": config.group_size_m,
+                },
+                num_warps=config.num_warps,
+                num_stages=config.num_stages,
+            )
+            for config in set(BEST_CONFIGS.values())
         ]
-        # fmt: on
+
+    # Generate lots of configs with Cartesian product approach.
     block_sizes = [32, 64, 128, 256]
     group_size_m_range = [1, 2, 4, 8]
     num_warps_range = [2, 4, 8]
