@@ -42,9 +42,6 @@ TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
 # fmt: on
 
 
-QUICK_TEST: bool = False
-
-
 @pytest.mark.parametrize("M, K, N, G", TEST_ONLY_SHAPES + REAL_SHAPES)
 @pytest.mark.parametrize(
     "in_dtype_str", {"i" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
@@ -57,6 +54,7 @@ QUICK_TEST: bool = False
 @pytest.mark.parametrize("trans_out_str", {f"tout{b}" for b in {"F", "T"}})
 @pytest.mark.parametrize("rng_seed_str", {f"rng{rng_seed}" for rng_seed in {77, 121}})
 def test_gmm(
+    quick_test: bool,
     M: int,
     K: int,
     N: int,
@@ -76,7 +74,7 @@ def test_gmm(
     rng_seed = int(rng_seed_str.replace("rng", ""))
 
     # Quick test skip conditions:
-    if QUICK_TEST:
+    if quick_test:
         if (in_dtype == torch.float16 and out_dtype == torch.bfloat16) or (
             in_dtype == torch.bfloat16 and out_dtype == torch.float16
         ):
@@ -97,7 +95,7 @@ def test_gmm(
         rng_seed=rng_seed,
     )
     # Reduce number of distinct group sizes in quick test.
-    num_group_sizes = 1 if QUICK_TEST else 5
+    num_group_sizes = 1 if quick_test else 5
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
@@ -106,7 +104,7 @@ def test_gmm(
     out_triton = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     # Don't use autotune for test only shapes, don't use autotune in quick test.
-    tiling = TILING if (M, K, N, G) in TEST_ONLY_SHAPES or QUICK_TEST else None
+    tiling = TILING if (M, K, N, G) in TEST_ONLY_SHAPES or quick_test else None
 
     for group_sizes in multiple_group_sizes:
         torch_gmm(
