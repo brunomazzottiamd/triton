@@ -25,15 +25,15 @@ from common import (
     is_power_of_2,
     check_input_device_dtype,
     get_shape_from_input,
-    get_tiling,
     get_output,
+    get_transposition,
 )
 
 # GMM kernel
 from triton_gmm_kernel import triton_gmm_kernel_core
 
 # Tuning database
-from best_config import BEST_CONFIGS
+from best_config import BEST_CONFIGS, pick_best_config
 
 
 # Triton GMM implementation.
@@ -238,9 +238,10 @@ def triton_gmm(
     group_sizes: Tensor,
     preferred_element_type: torch.dtype = DTYPE,
     existing_out: Tensor | None = None,
-    tiling: tuple[int, int, int] | None = None,
+    autotune: bool = False,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
+
     M, K, N, G = get_shape_from_input(lhs, rhs, group_sizes)
 
     out = get_output(
@@ -251,17 +252,28 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    if tiling is not None:
-        block_size_m, block_size_k, block_size_n = get_tiling(
-            M, K, N, tiling, group_sizes=group_sizes
+    trans_lhs, trans_rhs, trans_out, ld_lhs, ld_rhs, ld_out = get_transposition(
+        lhs, rhs, out
+    )
+
+    if not autotune:
+        best_config = pick_best_config(
+            M,
+            K,
+            N,
+            G,
+            group_sizes=group_sizes,
+            input_type=lhs.dtype,
+            output_type=out.dtype,
+            trans_lhs=trans_lhs,
+            trans_rhs=trans_rhs,
+            trans_out=trans_out,
         )
-        logging.debug(
-            "Running kernel with tiling (BLOCK_SIZE_M = %d, BLOCK_SIZE_K = %d, BLOCK_SIZE_N = %d).",
-            block_size_m,
-            block_size_k,
-            block_size_n,
+
+        grid = compute_grid(
+            N, best_config.block_size_m, best_config.block_size_n, group_sizes
         )
-        grid = compute_grid(N, block_size_m, block_size_n, group_sizes)
+
         # fmt: off
         triton_gmm_kernel[grid](
             # Tensor pointers:
@@ -271,17 +283,20 @@ def triton_gmm(
             # Tensor strides:
             *lhs.stride(), *rhs.stride(), *out.stride(),
             # Meta-parameters:
-            BLOCK_SIZE_M=block_size_m,
-            BLOCK_SIZE_K=block_size_k,
-            BLOCK_SIZE_N=block_size_n,
-            GROUP_SIZE_M=1,
+            BLOCK_SIZE_M=best_config.block_size_m,
+            BLOCK_SIZE_K=best_config.block_size_k,
+            BLOCK_SIZE_N=best_config.block_size_n,
+            GROUP_SIZE_M=best_config.group_size_m,
         )
         # fmt: on
+
     else:
         logging.debug("Running autotuned kernel.")
+
         autotuned_grid = lambda META: compute_grid(
             N, META["BLOCK_SIZE_M"], META["BLOCK_SIZE_N"], group_sizes
         )
+
         # fmt: off
         triton_autotuned_gmm_kernel[autotuned_grid](
             # Tensor pointers:

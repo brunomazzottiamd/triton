@@ -14,7 +14,6 @@ import pytest
 # Common module
 from common import (
     SUPPORTED_DTYPES_STR,
-    TILING,
     REAL_SHAPES,
     dtype_from_str,
     gen_input,
@@ -104,7 +103,7 @@ def test_gmm(
     out_triton = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     # Don't use autotune for test only shapes, don't use autotune in quick test.
-    tiling = TILING if (M, K, N, G) in TEST_ONLY_SHAPES or quick_test else None
+    autotune = not (((M, K, N, G) in TEST_ONLY_SHAPES) or quick_test)
 
     for group_sizes in multiple_group_sizes:
         torch_gmm(
@@ -121,7 +120,7 @@ def test_gmm(
             group_sizes,
             preferred_element_type=out_dtype,
             existing_out=out_triton,
-            tiling=tiling,
+            autotune=autotune,
         )
 
         torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
