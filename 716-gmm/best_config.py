@@ -19,6 +19,7 @@ from common import (
     TRANS_RHS,
     TRANS_OUT,
     TILING,
+    num_sms,
     is_power_of_2,
     get_tiling,
 )
@@ -61,6 +62,7 @@ class Config:
     block_size_k: int = TILING[1]
     block_size_n: int = TILING[2]
     group_size_m: int = 1
+    grid_dim: int = num_sms()
     num_warps: int = 4
     num_stages: int = 1
 
@@ -77,6 +79,9 @@ class Config:
         assert (
             self.group_size_m > 0
         ), f"Group size in M-dimension must be positive (it's {self.group_size_m})."
+        assert (
+            self.grid_dim > 0
+        ), f"Grid dimension must be positive (it's {self.grid_dim})."
         assert (
             self.num_warps > 0
         ), f"Number of warps must be positive (it's {self.num_warps})."

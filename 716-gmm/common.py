@@ -104,6 +104,16 @@ REAL_SHAPES: list[tuple[int, int, int, int]] = [
 # fmt: on
 
 
+# Hardware capabilities.
+# ------------------------------------------------------------------------------
+
+
+def num_sms(device: torch.device | str = DEVICE) -> int:
+    num_sms = torch.cuda.get_device_properties(device).multi_processor_count
+    assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
+    return num_sms
+
+
 # Tensor creation functions.
 # ------------------------------------------------------------------------------
 
