@@ -36,7 +36,6 @@ from common import (
     TRANS_OUT,
     RNG_SEED,
     NUM_GROUP_SIZES,
-    TILING,
     REAL_SHAPES,
     dtype_from_str,
     str_from_dtype,
@@ -102,7 +101,12 @@ def benchmark_triton_gmm(
 
         # First "dry-run" to invoke autotuner.
         triton_gmm(
-            lhs, rhs, group_sizes_0, preferred_element_type=out_dtype, existing_out=out
+            lhs,
+            rhs,
+            group_sizes_0,
+            preferred_element_type=out_dtype,
+            existing_out=out,
+            autotune=True,
         )
 
         quantiles = [0.5, 0.2, 0.8]
@@ -123,6 +127,7 @@ def benchmark_triton_gmm(
                     group_sizes,
                     preferred_element_type=out_dtype,
                     existing_out=out,
+                    autotune=True,
                 ),
                 quantiles=quantiles,
             )
@@ -230,7 +235,6 @@ def run_triton_gmm(
             group_sizes,
             preferred_element_type=out_dtype,
             existing_out=out,
-            tiling=TILING,
         )
 
 
