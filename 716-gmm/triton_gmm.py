@@ -20,8 +20,8 @@ import triton.language as tl
 
 # Common module
 from common import (
-    DEVICE,
     DTYPE,
+    num_sms,
     is_power_of_2,
     check_input_device_dtype,
     get_shape_from_input,
@@ -57,6 +57,7 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
                     "BLOCK_SIZE_K": config.block_size_k,
                     "BLOCK_SIZE_N": config.block_size_n,
                     "GROUP_SIZE_M": config.group_size_m,
+                    "GRID_DIM": config.grid_dim,
                 },
                 num_warps=config.num_warps,
                 num_stages=config.num_stages,
@@ -70,13 +71,16 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     # |_ Consider restricting block_size_k_range to [32].
     # |_ Consider restricting block_size_n_range to [128, 256].
     group_size_m_range = [1, 2, 4, 8]
+    grid_dim_range = [
+        int(sms_multiplier * num_sms()) for sms_multiplier in [0.5, 1, 2, 3, 4]
+    ]
     num_warps_range = [2, 4, 8]
     # |_ Consider restricting num_warps_range to [4, 8].
     num_stages_range = [1, 2]
     # waves_per_eu_range = [0, 2, 4, 8]
     # matrix_instr_nonkdim_range = [16, 32]
     # kpack_range = [1, 2]
-    # 1536 configurations per shape
+    # WARNING: 7680 configurations per shape!!!
     return [
         triton.Config(
             {
@@ -84,6 +88,7 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
                 "BLOCK_SIZE_K": block_size_k,
                 "BLOCK_SIZE_N": block_size_n,
                 "GROUP_SIZE_M": group_size_m,
+                "GRID_DIM": grid_dim,
                 # "waves_per_eu": waves_per_eu,
                 # "kpack": kpack,
                 # "matrix_instr_nonkdim": matrix_instr_nonkdim,
@@ -91,11 +96,12 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
             num_warps=num_warps,
             num_stages=num_stages,
         )
-        for block_size_m, block_size_k, block_size_n, group_size_m, num_warps, num_stages in itertools.product(
+        for block_size_m, block_size_k, block_size_n, group_size_m, grid_dim, num_warps, num_stages in itertools.product(
             block_sizes,
             block_sizes,
             block_sizes,
             group_size_m_range,
+            grid_dim_range,
             num_warps_range,
             num_stages_range,
         )
@@ -130,6 +136,7 @@ def triton_gmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    GRID_DIM: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -147,6 +154,7 @@ def triton_gmm_kernel(
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE_M=GROUP_SIZE_M,
+        GRID_DIM=GRID_DIM,
     )
     # fmt: on
 
@@ -180,6 +188,7 @@ def triton_autotuned_gmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    GRID_DIM: tl.constexpr,
 ):
     # fmt: off
     triton_gmm_kernel_core(
@@ -197,14 +206,9 @@ def triton_autotuned_gmm_kernel(
         BLOCK_SIZE_N=BLOCK_SIZE_N,
         K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE_M=GROUP_SIZE_M,
+        GRID_DIM=GRID_DIM,
     )
     # fmt: on
-
-
-def num_sms(device: torch.device | str = DEVICE) -> int:
-    num_sms = torch.cuda.get_device_properties(device).multi_processor_count
-    assert num_sms, f"Number of SMs must be positive (it's {num_sms})."
-    return num_sms
 
 
 def compute_grid(
@@ -212,6 +216,7 @@ def compute_grid(
     block_size_m: int,
     block_size_n: int,
     group_sizes: Tensor,
+    grid_dim: int,
 ) -> tuple[int]:
     assert N > 0, f"N must be positive, it's {N}."
     assert is_power_of_2(
@@ -221,13 +226,14 @@ def compute_grid(
         block_size_n
     ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
     assert torch.all(group_sizes >= 0).item(), "All group_sizes must be non-negative."
+    assert grid_dim > 0, f"Grid dimension must be positive (it's {grid_dim})."
     num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
     assert torch.all(num_m_tiles >= 0).item(), "All num_m_tiles must be non-negative."
     num_n_tiles = triton.cdiv(N, block_size_n)
     assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
     num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
     assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
-    num_programs = int(min(num_sms(device=group_sizes.device), num_tiles))
+    num_programs = int(min(grid_dim, num_tiles))
     assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
     return (num_programs,)
 
@@ -271,7 +277,11 @@ def triton_gmm(
         )
 
         grid = compute_grid(
-            N, best_config.block_size_m, best_config.block_size_n, group_sizes
+            N,
+            best_config.block_size_m,
+            best_config.block_size_n,
+            group_sizes,
+            best_config.grid_dim,
         )
 
         # fmt: off
@@ -287,6 +297,7 @@ def triton_gmm(
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
             GROUP_SIZE_M=best_config.group_size_m,
+            GRID_DIM=best_config.grid_dim,
         )
         # fmt: on
 
@@ -294,7 +305,11 @@ def triton_gmm(
         logging.debug("Running autotuned kernel.")
 
         autotuned_grid = lambda META: compute_grid(
-            N, META["BLOCK_SIZE_M"], META["BLOCK_SIZE_N"], group_sizes
+            N,
+            META["BLOCK_SIZE_M"],
+            META["BLOCK_SIZE_N"],
+            group_sizes,
+            META["GRID_DIM"],
         )
 
         # fmt: off

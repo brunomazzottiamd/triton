@@ -43,6 +43,7 @@ def triton_gmm_kernel_core(
     BLOCK_SIZE_N: tl.constexpr,
     K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    GRID_DIM: tl.constexpr,
 ):
     tl.assume(M > 0)
     tl.assume(K > 0)
@@ -205,7 +206,7 @@ def triton_gmm_kernel_core(
             )
 
             # Go to the next tile by advancing number of programs.
-            tile += tl.num_programs(0)
+            tile += GRID_DIM
             tl.device_assert(tile > 0, "tile <= 0 (at update)")
 
         # Get ready to go to the next MM problem.
