@@ -66,8 +66,12 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
 
     # Generate lots of configs with Cartesian product approach.
     block_sizes = [32, 64, 128, 256]
+    # |_ Consider restricting block_size_m_range to [64, 128, 256].
+    # |_ Consider restricting block_size_k_range to [32].
+    # |_ Consider restricting block_size_n_range to [128, 256].
     group_size_m_range = [1, 2, 4, 8]
     num_warps_range = [2, 4, 8]
+    # |_ Consider restricting num_warps_range to [4, 8].
     num_stages_range = [1, 2]
     # waves_per_eu_range = [0, 2, 4, 8]
     # matrix_instr_nonkdim_range = [16, 32]
