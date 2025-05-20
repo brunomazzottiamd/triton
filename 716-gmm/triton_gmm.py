@@ -122,10 +122,6 @@ def triton_gmm_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor leading dimensions:
-    ld_lhs: int,
-    ld_rhs: int,
-    ld_out: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -143,8 +139,6 @@ def triton_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor leading dimensions:
-        ld_lhs, ld_rhs, ld_out,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -174,10 +168,6 @@ def triton_autotuned_gmm_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor leading dimensions:
-    ld_lhs: int,
-    ld_rhs: int,
-    ld_out: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -195,8 +185,6 @@ def triton_autotuned_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor leading dimensions:
-        ld_lhs, ld_rhs, ld_out,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -258,9 +246,7 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, ld_lhs, ld_rhs, ld_out = get_transposition(
-        lhs, rhs, out
-    )
+    trans_lhs, trans_rhs, trans_out, _, _, _ = get_transposition(lhs, rhs, out)
 
     if not autotune:
         best_config = pick_best_config(
@@ -290,8 +276,6 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor leading dimensions:
-            ld_lhs, ld_rhs, ld_out,
             # Meta-parameters:
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
@@ -321,8 +305,6 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor leading dimensions:
-            ld_lhs, ld_rhs, ld_out,
             # Meta-parameters:
             TRANS_LHS=trans_lhs,
             TRANS_RHS=trans_rhs,
