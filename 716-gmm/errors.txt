@@ -1,0 +1,6 @@
+* compilation may get stuck
+* Failures have been detected while processing an MLIR pass pipeline
+  Pipeline failed while executing [`TritonAMDGPUBlockPingpong` on
+  'builtin.module' operation]: reproducer generated at `std::errs,
+  please share the reproducer above with Triton project.`
+
