@@ -17,6 +17,14 @@ function clean_triton_cache() {
 }
 
 
+function get_target_shapes() {
+    PYTHONPATH="${script_dir}" python << EOF
+from common import REAL_SHAPES
+print("\n".join(" ".join(str(dim) for dim in shape) for shape in REAL_SHAPES))
+EOF
+}
+
+
 function bench() {
     shape="${1}"
     read -r m k n g <<< "${shape}"
@@ -77,14 +85,10 @@ function main() {
     log "PyTorch version = ${torch_version}" | tee "${script_dir}/version.log"
     log "Triton version = ${triton_version}" | tee --append "${script_dir}/version.log"
 
-    shapes=(
-        '  49152  1408  2048 64'
-        '3145728  2048  1408  8'
-        ' 393216  2048  1408 64'
-        '  32768  6144 16384  8'
-        '  32768 16384  6144  8'
-    )
+    mapfile -t shapes < <(get_target_shapes)
+
     for shape in "${shapes[@]}"; do
+        shape=$(tr --complement --delete '0-9 ' <<< "${shape}")
         bench_layouts "${workload}" "${shape}"
     done
 
