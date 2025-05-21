@@ -71,9 +71,7 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     # |_ Consider restricting block_size_k_range to [32].
     # |_ Consider restricting block_size_n_range to [128, 256].
     group_size_m_range = [1, 2, 4, 8]
-    grid_dim_range = [
-        int(sms_multiplier * num_sms()) for sms_multiplier in [0.5, 1, 2, 3, 4]
-    ]
+    grid_dim_range = [sms_multiplier * num_sms() for sms_multiplier in range(1, 5)]
     num_warps_range = [2, 4, 8]
     # |_ Consider restricting num_warps_range to [4, 8].
     num_stages_range = [1, 2]
