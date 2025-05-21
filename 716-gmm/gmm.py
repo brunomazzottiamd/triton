@@ -148,12 +148,12 @@ def benchmark_triton_gmm(
     num_configs = len(autotune_configs())
     if num_configs > 50:  # this is a completely arbitrary threshold!
         logging.warning(
-            "Warning: using full tuning space, there are %d configurations.",
+            "  Warning: using full tuning space, there are %d configurations.",
             num_configs,
         )
     else:
         logging.info(
-            "Using reduced tuning space, there are %d configurations.",
+            "  Using reduced tuning space, there are %d configurations.",
             num_configs,
         )
     logging.info(
@@ -169,7 +169,7 @@ def benchmark_triton_gmm(
         trans_out,
     )
     logging.info(
-        "    num_group_sizes = %d, unif_group_sizes = %s",
+        "  num_group_sizes = %d, unif_group_sizes = %s",
         num_group_sizes,
         unif_group_sizes,
     )
@@ -208,12 +208,12 @@ def run_triton_gmm(
         trans_rhs,
         trans_out,
     )
-    logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
     logging.info(
-        "    num_group_sizes = %d, unif_group_sizes = %s",
+        "  num_group_sizes = %d, unif_group_sizes = %s",
         num_group_sizes,
         unif_group_sizes,
     )
+    logging.info("  (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
     lhs, rhs, group_sizes_0 = gen_input(
         M,
@@ -232,7 +232,7 @@ def run_triton_gmm(
     out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     for group_sizes in multiple_group_sizes:
-        logging.debug("      group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
+        logging.debug("    group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
         triton_gmm(
             lhs,
             rhs,
