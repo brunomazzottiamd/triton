@@ -14,5 +14,7 @@ if [ "$(uname)" == Linux ]; then
     shellcheck "${script_dir}"/*.sh
 else
     # Ignore literal carriage return warnings on Windows.
+    dos2unix --quiet "${script_dir}"/*.sh
     shellcheck --exclude SC1017 "${script_dir}"/*.sh
+    unix2dos --quiet "${script_dir}"/*.sh
 fi
