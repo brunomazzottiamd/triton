@@ -61,6 +61,7 @@ def benchmark_triton_gmm(
     trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
+    unif_group_sizes: bool = False,
 ) -> None:
     in_dtype_str = str_from_dtype(in_dtype)
     out_dtype_str = str_from_dtype(out_dtype)
@@ -93,20 +94,11 @@ def benchmark_triton_gmm(
             trans_lhs=trans_lhs,
             trans_rhs=trans_rhs,
             rng_seed=rng_seed,
+            unif_group_sizes=unif_group_sizes,
         )
         out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
         multiple_group_sizes = gen_multiple_group_sizes(
             num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
-        )
-
-        # First "dry-run" to invoke autotuner.
-        triton_gmm(
-            lhs,
-            rhs,
-            group_sizes_0,
-            preferred_element_type=out_dtype,
-            existing_out=out,
-            autotune=True,
         )
 
         quantiles = [0.5, 0.2, 0.8]
@@ -154,7 +146,7 @@ def benchmark_triton_gmm(
 
     logging.info("Benchmarking Triton GMM kernel:")
     num_configs = len(autotune_configs())
-    if num_configs > 50:
+    if num_configs > 50:  # this is a completely arbitrary threshold!
         logging.warning(
             "Warning: using full tuning space, there are %d configurations.",
             num_configs,
@@ -176,6 +168,11 @@ def benchmark_triton_gmm(
         trans_rhs,
         trans_out,
     )
+    logging.info(
+        "    num_group_sizes = %d, unif_group_sizes = %s",
+        num_group_sizes,
+        unif_group_sizes,
+    )
     benchmark.run(show_plots=False, print_data=True)
 
 
@@ -196,6 +193,7 @@ def run_triton_gmm(
     trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
+    unif_group_sizes: bool = False,
 ) -> None:
     logging.info("Running Triton GMM kernel:")
     logging.info(
@@ -211,6 +209,11 @@ def run_triton_gmm(
         trans_out,
     )
     logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
+    logging.info(
+        "    num_group_sizes = %d, unif_group_sizes = %s",
+        num_group_sizes,
+        unif_group_sizes,
+    )
 
     lhs, rhs, group_sizes_0 = gen_input(
         M,
@@ -221,6 +224,7 @@ def run_triton_gmm(
         trans_lhs=trans_lhs,
         trans_rhs=trans_rhs,
         rng_seed=rng_seed,
+        unif_group_sizes=unif_group_sizes,
     )
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
@@ -288,6 +292,12 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
                 None, "M, K, N, and G are mandatory when --bench isn't used"
             )
 
+    if args.unif_group_sizes and args.num_group_sizes != 1:
+        raise argparse.ArgumentError(
+            None,
+            "number of distinct group sizes must be 1 when --unif-group-sizes is used",
+        )
+
     return args
 
 
@@ -331,6 +341,11 @@ def parse_args() -> argparse.Namespace:
         type=positive_int,
         default=NUM_GROUP_SIZES,
         help=f"number of distinct random group sizes to use (default: {NUM_GROUP_SIZES})",
+    )
+    parser.add_argument(
+        "--unif-group-sizes",
+        action="store_true",
+        help="evenly distributes tokens among all groups",
     )
 
     # Other arguments
@@ -376,6 +391,7 @@ def main() -> None:
             trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
+            unif_group_sizes=args.unif_group_sizes,
         )
     else:
         run_triton_gmm(
@@ -387,6 +403,7 @@ def main() -> None:
             trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
+            unif_group_sizes=args.unif_group_sizes,
         )
 
 

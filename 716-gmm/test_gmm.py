@@ -92,6 +92,7 @@ def test_gmm(
         trans_lhs=trans_lhs,
         trans_rhs=trans_rhs,
         rng_seed=rng_seed,
+        unif_group_sizes=True,  # 1st group_sizes in test is evenly distributed
     )
     # Reduce number of distinct group sizes in quick test.
     num_group_sizes = 1 if quick_test else 5

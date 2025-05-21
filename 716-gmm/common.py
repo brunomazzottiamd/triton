@@ -118,6 +118,32 @@ def num_sms(device: torch.device | str = DEVICE) -> int:
 # ------------------------------------------------------------------------------
 
 
+def gen_uniform_group_sizes(
+    M: int,
+    G: int,
+    device: torch.device | str = DEVICE,
+) -> Tensor:
+    assert M >= 0, f"Number of tokens M must be non-negative (it's {M})."
+    assert G > 0, f"Number of experts G must be positive (it's {G})."
+
+    base = M // G
+    remainder = M % G
+    group_sizes = torch.full((G,), base, dtype=torch.int32, device=device)
+    if remainder > 0:
+        group_sizes[:remainder] += 1
+
+    assert (
+        len(group_sizes) == G
+    ), f"Group sizes don't have {G} elements (it's {len(group_sizes)})."
+    assert torch.all(group_sizes >= 0).item(), "All group sizes must be non-negative."
+    assert (
+        torch.sum(group_sizes).item() == M
+    ), f"Group sizes don't add up to total tokens {M}."
+    assert group_sizes.dtype == torch.int32, "Group sizes must be int32."
+
+    return group_sizes
+
+
 def gen_group_sizes(
     M: int,
     G: int,
@@ -260,6 +286,7 @@ def gen_input(
     trans_lhs: bool = TRANS_LHS,
     trans_rhs: bool = TRANS_RHS,
     rng_seed: int | None = RNG_SEED,
+    unif_group_sizes: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor]:
     assert M > 0, f"Number of lhs rows M must be positive (M = {M})."
     assert K > 0, f"Number of lhs columns / rhs rows K must be positive (K = {K})."
@@ -283,7 +310,11 @@ def gen_input(
         rhs = torch.randn((G, K, N), dtype=torch.float32, device=device)
     rhs = rhs.to(preferred_element_type)
 
-    group_sizes = gen_group_sizes(M, G, device=device, rng_seed=None)
+    group_sizes = (
+        gen_uniform_group_sizes(M, G, device=device)
+        if unif_group_sizes
+        else gen_group_sizes(M, G, device=device, rng_seed=None)
+    )
 
     return lhs, rhs, group_sizes
 
@@ -318,6 +349,10 @@ def check_input_device_dtype(lhs: Tensor, rhs: Tensor, group_sizes: Tensor) -> N
         lhs.dtype == rhs.dtype
     ), f"lhs and rhs types must match (lhs = {lhs.dtype}, rhs = {rhs.dtype})."
     assert group_sizes.dtype == torch.int32, "group_sizes type must be int32."
+
+
+# Functions to extract information from generated tensors.
+# ------------------------------------------------------------------------------
 
 
 def get_shape_from_input(
@@ -461,6 +496,7 @@ def get_transposition(
         is_out_row_major != is_out_col_major
     ), "out must be row-major or column-major."
 
+    # Get leading dimension according to transposition configuration.
     ld_lhs = K if is_lhs_row_major else M
     ld_rhs = N if is_rhs_row_major else K
     ld_out = N if is_out_row_major else M
