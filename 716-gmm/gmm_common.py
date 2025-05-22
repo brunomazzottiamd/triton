@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 
 
+# GMM problem description:
+# * Input tensors:
+#   * lhs is (M, K) bf16
+#   * rhs is (G, K, N) bf16
+#   * group_sizes is (G,) int32
+# * Output tensors:
+#   * out is (M, N) bf16
+
+
 # Imports.
 # ------------------------------------------------------------------------------
 
@@ -18,9 +27,10 @@ from common import (
     TRANS_LHS,
     TRANS_RHS,
     TRANS_OUT,
-    gen_uniform_group_sizes,
-    gen_group_sizes,
 )
+
+# Group sizes module
+from group_sizes import gen_uniform_group_sizes, gen_group_sizes
 
 
 # Tensor creation functions.

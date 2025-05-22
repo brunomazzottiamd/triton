@@ -15,8 +15,11 @@ import pytest
 from dtypes import SUPPORTED_DTYPES_STR, dtype_from_str
 
 # Common module
-from common import REAL_SHAPES, gen_multiple_group_sizes
+from common import REAL_SHAPES
 from gmm_common import gen_gmm_input, gen_gmm_output
+
+# Group sizes module
+from group_sizes import gen_multiple_group_sizes
 
 # GMM implementations
 from torch_gmm import torch_gmm

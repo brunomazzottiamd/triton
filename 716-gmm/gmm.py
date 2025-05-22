@@ -4,15 +4,6 @@
 # -*- coding: utf-8 -*-
 
 
-# GMM problem description:
-# * Input tensors:
-#   * lhs is (M, K) bf16
-#   * rhs is (G, K, N) bf16
-#   * group_sizes is (G,) int32
-# * Output tensors:
-#   * out is (M, N) bf16
-
-
 # Imports.
 # ------------------------------------------------------------------------------
 
@@ -43,11 +34,13 @@ from common import (
     RNG_SEED,
     NUM_GROUP_SIZES,
     REAL_SHAPES,
-    gen_multiple_group_sizes,
 )
 from gmm_common import gen_gmm_input, gen_gmm_output
 
-# Triton GMM implementations
+# Group sizes module
+from group_sizes import gen_multiple_group_sizes
+
+# Triton GMM implementation
 from triton_gmm import triton_gmm, gmm_autotune_configs, triton_autotuned_gmm_kernel
 
 
