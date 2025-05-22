@@ -203,3 +203,79 @@ def test_gmm(
         )
 
         torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
+
+
+# TGMM unit tests.
+# ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("M, K, N, G", TEST_SHAPES)
+@pytest.mark.parametrize("in_dtype_str", INPUT_DTYPES_STR)
+@pytest.mark.parametrize("out_dtype_str", OUTPUT_DTYPES_STR)
+@pytest.mark.parametrize("trans_lhs_str", TRANS_LSH_STR)
+@pytest.mark.parametrize("trans_rhs_str", TRANS_RHS_STR)
+@pytest.mark.parametrize("trans_out_str", TRANS_OUT_STR)
+@pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
+def test_tgmm(
+    quick_test: bool,
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    in_dtype_str: str,
+    out_dtype_str: str,
+    trans_lhs_str: str,
+    trans_rhs_str: str,
+    trans_out_str: str,
+    rng_seed_str: str,
+):
+    in_dtype = dtype_from_str(in_dtype_str)
+    out_dtype = dtype_from_str(out_dtype_str)
+    trans_lhs = trans_lhs_from_str(trans_lhs_str)
+    trans_rhs = trans_rhs_from_str(trans_rhs_str)
+    trans_out = trans_out_from_str(trans_out_str)
+    rng_seed = rng_seed_from_str(rng_seed_str)
+
+    skip(quick_test, in_dtype, out_dtype, trans_lhs, trans_rhs, trans_out)
+
+    lhs, rhs, group_sizes_0 = gen_tgmm_input(
+        M,
+        K,
+        N,
+        G,
+        preferred_element_type=in_dtype,
+        trans_lhs=trans_lhs,
+        trans_rhs=trans_rhs,
+        rng_seed=rng_seed,
+        unif_group_sizes=True,  # 1st group_sizes in test is evenly distributed
+    )
+    multiple_group_sizes = gen_group_sizes(quick_test, M, G, group_sizes_0)
+
+    out_torch = gen_tgmm_output(
+        K, N, G, preferred_element_type=out_dtype, trans=trans_out
+    )
+    # out_triton = gen_tgmm_output(K, N, G, preferred_element_type=out_dtype, trans=trans_out)
+
+    # autotune = use_triton_autotune(quick_test, M, K, N, G)
+
+    for group_sizes in multiple_group_sizes:
+        torch_tgmm(
+            lhs,
+            rhs,
+            group_sizes,
+            preferred_element_type=out_dtype,
+            trans_out=trans_out,
+            existing_out=out_torch,
+        )
+
+        # triton_tgmm(
+        #     lhs,
+        #     rhs,
+        #     group_sizes,
+        #     preferred_element_type=out_dtype,
+        #     trans_out=trans_out,
+        #     existing_out=out_triton,
+        #     autotune=autotune,
+        # )
+
+        # torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
