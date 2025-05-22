@@ -12,7 +12,7 @@ from torch import Tensor
 from dtypes import DTYPE
 
 # Common module
-from common import check_input_device_dtype
+from common import TRANS_OUT, check_input_device_dtype
 from gmm_common import get_gmm_shape, get_gmm_output
 
 
@@ -25,6 +25,7 @@ def torch_gmm(
     rhs: Tensor,
     group_sizes: Tensor,
     preferred_element_type: torch.dtype = DTYPE,
+    trans_out: bool = TRANS_OUT,
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
@@ -36,6 +37,7 @@ def torch_gmm(
         N,
         device=lhs.device,
         preferred_element_type=preferred_element_type,
+        trans=trans_out,
         existing_out=existing_out,
     )
 

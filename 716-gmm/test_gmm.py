@@ -30,7 +30,7 @@ from triton_gmm import triton_gmm
 # ------------------------------------------------------------------------------
 
 
-# GMM shapes used only for test purposes,
+# Shapes used only for test purposes,
 # fmt: off
 TEST_ONLY_SHAPES: list[tuple[int, int, int, int]] = [
     #  M,    K,    N,   G
@@ -112,6 +112,7 @@ def test_gmm(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
+            trans_out=trans_out,
             existing_out=out_torch,
         )
 
@@ -120,6 +121,7 @@ def test_gmm(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
+            trans_out=trans_out,
             existing_out=out_triton,
             autotune=autotune,
         )
