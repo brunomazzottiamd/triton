@@ -114,6 +114,7 @@ def benchmark_triton_gmm(
                     rhs,
                     group_sizes,
                     preferred_element_type=out_dtype,
+                    trans_out=trans_out,
                     existing_out=out,
                     autotune=True,
                 ),
@@ -234,6 +235,7 @@ def run_triton_gmm(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
+            trans_out=trans_out,
             existing_out=out,
         )
 

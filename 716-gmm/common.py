@@ -48,7 +48,7 @@ TRANS_RHS: bool = True
 TRANS_OUT: bool = False
 
 
-# Real GMM shapes, used by real models.
+# Real shapes, used by real models.
 # fmt: off
 REAL_SHAPES: list[tuple[int, int, int, int]] = [
     #      M,     K,     N,   G
