@@ -43,13 +43,12 @@ from common import (
     RNG_SEED,
     NUM_GROUP_SIZES,
     REAL_SHAPES,
-    gen_input,
     gen_multiple_group_sizes,
-    gen_output,
 )
+from gmm_common import gen_gmm_input, gen_gmm_output
 
 # Triton GMM implementations
-from triton_gmm import triton_gmm, autotune_configs, triton_autotuned_gmm_kernel
+from triton_gmm import triton_gmm, gmm_autotune_configs, triton_autotuned_gmm_kernel
 
 
 # Benchmark.
@@ -89,7 +88,7 @@ def benchmark_triton_gmm(
 
         logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
-        lhs, rhs, group_sizes_0 = gen_input(
+        lhs, rhs, group_sizes_0 = gen_gmm_input(
             M,
             K,
             N,
@@ -100,7 +99,7 @@ def benchmark_triton_gmm(
             rng_seed=rng_seed,
             unif_group_sizes=unif_group_sizes,
         )
-        out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+        out = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
         multiple_group_sizes = gen_multiple_group_sizes(
             num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
         )
@@ -149,7 +148,7 @@ def benchmark_triton_gmm(
         return p50_tflops, p20_tflops, p80_tflops
 
     logging.info("Benchmarking Triton GMM kernel:")
-    num_configs = len(autotune_configs())
+    num_configs = len(gmm_autotune_configs())
     if num_configs > 50:  # this is a completely arbitrary threshold!
         logging.warning(
             "  Warning: using full tuning space, there are %d configurations.",
@@ -219,7 +218,7 @@ def run_triton_gmm(
     )
     logging.info("  (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
-    lhs, rhs, group_sizes_0 = gen_input(
+    lhs, rhs, group_sizes_0 = gen_gmm_input(
         M,
         K,
         N,
@@ -233,7 +232,7 @@ def run_triton_gmm(
     multiple_group_sizes = gen_multiple_group_sizes(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
-    out = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+    out = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     for group_sizes in multiple_group_sizes:
         logging.debug("    group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
