@@ -26,19 +26,23 @@ import torch
 # Triton
 import triton
 
-# Common module
-from common import (
+# Types module
+from dtypes import (
     SUPPORTED_DTYPES_STR,
     DTYPE_STR,
     DTYPE,
+    dtype_from_str,
+    str_from_dtype,
+)
+
+# Common module
+from common import (
     TRANS_LHS,
     TRANS_RHS,
     TRANS_OUT,
     RNG_SEED,
     NUM_GROUP_SIZES,
     REAL_SHAPES,
-    dtype_from_str,
-    str_from_dtype,
     gen_input,
     gen_multiple_group_sizes,
     gen_output,

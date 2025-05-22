@@ -18,9 +18,11 @@ from torch import Tensor
 import triton
 import triton.language as tl
 
+# Types module
+from dtypes import DTYPE
+
 # Common module
 from common import (
-    DTYPE,
     num_sms,
     is_power_of_2,
     check_input_device_dtype,
