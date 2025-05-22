@@ -11,11 +11,12 @@ import torch
 # pytest
 import pytest
 
+# Types module
+from dtypes import SUPPORTED_DTYPES_STR, dtype_from_str
+
 # Common module
 from common import (
-    SUPPORTED_DTYPES_STR,
     REAL_SHAPES,
-    dtype_from_str,
     gen_input,
     gen_multiple_group_sizes,
     gen_output,

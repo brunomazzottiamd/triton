@@ -11,10 +11,11 @@ import logging
 # PyTorch
 import torch
 
+# Types module
+from dtypes import SUPPORTED_DTYPES, DTYPE
+
 # Common module
 from common import (
-    SUPPORTED_DTYPES,
-    DTYPE,
     TRANS_LHS,
     TRANS_RHS,
     TRANS_OUT,

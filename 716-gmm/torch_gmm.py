@@ -8,8 +8,11 @@
 import torch
 from torch import Tensor
 
+# Types module
+from dtypes import DTYPE
+
 # Common module
-from common import DTYPE, check_input_device_dtype, get_shape_from_input, get_output
+from common import check_input_device_dtype, get_shape_from_input, get_output
 
 
 # PyTorch reference GMM implementation.
