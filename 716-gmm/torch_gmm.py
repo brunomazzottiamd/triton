@@ -12,7 +12,8 @@ from torch import Tensor
 from dtypes import DTYPE
 
 # Common module
-from common import check_input_device_dtype, get_shape_from_input, get_output
+from common import check_input_device_dtype
+from gmm_common import get_gmm_shape, get_gmm_output
 
 
 # PyTorch reference GMM implementation.
@@ -27,9 +28,10 @@ def torch_gmm(
     existing_out: Tensor | None = None,
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
-    M, _, N, G = get_shape_from_input(lhs, rhs, group_sizes)
 
-    out = get_output(
+    M, _, N, G = get_gmm_shape(lhs, rhs, group_sizes)
+
+    out = get_gmm_output(
         M,
         N,
         device=lhs.device,

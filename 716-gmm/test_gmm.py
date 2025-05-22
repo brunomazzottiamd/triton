@@ -15,12 +15,8 @@ import pytest
 from dtypes import SUPPORTED_DTYPES_STR, dtype_from_str
 
 # Common module
-from common import (
-    REAL_SHAPES,
-    gen_input,
-    gen_multiple_group_sizes,
-    gen_output,
-)
+from common import REAL_SHAPES, gen_multiple_group_sizes
+from gmm_common import gen_gmm_input, gen_gmm_output
 
 # GMM implementations
 from torch_gmm import torch_gmm
@@ -84,7 +80,7 @@ def test_gmm(
         if (trans_lhs, trans_rhs) not in {(False, True), (True, False), (True, True)}:
             pytest.skip("Skipping non-{TN,NT,NN} layouts speed up test execution.")
 
-    lhs, rhs, group_sizes_0 = gen_input(
+    lhs, rhs, group_sizes_0 = gen_gmm_input(
         M,
         K,
         N,
@@ -101,8 +97,8 @@ def test_gmm(
         num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
     )
 
-    out_torch = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
-    out_triton = gen_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+    out_torch = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+    out_triton = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
 
     # Don't use autotune for test only shapes, don't use autotune in quick test.
     autotune = not (((M, K, N, G) in TEST_ONLY_SHAPES) or quick_test)

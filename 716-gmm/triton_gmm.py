@@ -22,14 +22,8 @@ import triton.language as tl
 from dtypes import DTYPE
 
 # Common module
-from common import (
-    num_sms,
-    is_power_of_2,
-    check_input_device_dtype,
-    get_shape_from_input,
-    get_output,
-    get_transposition,
-)
+from common import num_sms, is_power_of_2, check_input_device_dtype
+from gmm_common import get_gmm_shape, get_gmm_output, get_gmm_transposition
 
 # GMM kernel
 from triton_gmm_kernel import triton_gmm_kernel_core
@@ -42,14 +36,14 @@ from best_config import BEST_CONFIGS, pick_best_config
 # ------------------------------------------------------------------------------
 
 
-def heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
+def gmm_heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
     return {
         "K_DIVISIBLE_BY_BLOCK_SIZE_K": lambda META: META["K"] % META["BLOCK_SIZE_K"]
         == 0,
     }
 
 
-def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
+def gmm_autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     if not full_tuning_space:
         # Grab all distinct configs from tuning database.
         return [
@@ -108,7 +102,7 @@ def autotune_configs(full_tuning_space: bool = False) -> list[triton.Config]:
     ]
 
 
-@triton.heuristics(heuristics())
+@triton.heuristics(gmm_heuristics())
 @triton.jit
 @typing.no_type_check
 def triton_gmm_kernel(
@@ -159,8 +153,8 @@ def triton_gmm_kernel(
     # fmt: on
 
 
-@triton.autotune(configs=autotune_configs(), key=["M", "K", "N", "G"])
-@triton.heuristics(heuristics())
+@triton.autotune(configs=gmm_autotune_configs(), key=["M", "K", "N", "G"])
+@triton.heuristics(gmm_heuristics())
 @triton.jit
 @typing.no_type_check
 def triton_autotuned_gmm_kernel(
@@ -248,9 +242,9 @@ def triton_gmm(
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
 
-    M, K, N, G = get_shape_from_input(lhs, rhs, group_sizes)
+    M, K, N, G = get_gmm_shape(lhs, rhs, group_sizes)
 
-    out = get_output(
+    out = get_gmm_output(
         M,
         N,
         device=lhs.device,
@@ -258,9 +252,7 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, ld_lhs, ld_rhs, ld_out = get_transposition(
-        lhs, rhs, out
-    )
+    trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
 
     if not autotune:
         best_config = pick_best_config(
