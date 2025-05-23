@@ -197,6 +197,7 @@ def test_gmm(
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
     for group_sizes in multiple_group_sizes:
+        out_torch.zero_()
         torch_gmm(
             lhs,
             rhs,
@@ -206,6 +207,7 @@ def test_gmm(
             existing_out=out_torch,
         )
 
+        out_triton.zero_()
         triton_gmm(
             lhs,
             rhs,
@@ -225,13 +227,13 @@ def test_gmm(
 # ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("M, K, N, G", [(10, 2, 3, 4)])
-@pytest.mark.parametrize("in_dtype_str", {"ibf16"})
-@pytest.mark.parametrize("out_dtype_str", {"obf16"})
-@pytest.mark.parametrize("trans_lhs_str", {"tlhsF"})
-@pytest.mark.parametrize("trans_rhs_str", {"trhsF"})
-@pytest.mark.parametrize("trans_out_str", {"toutF"})
-@pytest.mark.parametrize("rng_seed_str", {"rng77"})
+@pytest.mark.parametrize("M, K, N, G", TEST_ONLY_SHAPES)
+@pytest.mark.parametrize("in_dtype_str", INPUT_DTYPES_STR)
+@pytest.mark.parametrize("out_dtype_str", OUTPUT_DTYPES_STR)
+@pytest.mark.parametrize("trans_lhs_str", TRANS_LSH_STR)
+@pytest.mark.parametrize("trans_rhs_str", TRANS_RHS_STR)
+@pytest.mark.parametrize("trans_out_str", TRANS_OUT_STR)
+@pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
 def test_tgmm(
     quick_test: bool,
     M: int,
@@ -276,12 +278,8 @@ def test_tgmm(
 
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
-    print("\nlhs", lhs, sep="\n")
-    print("\nrhs", rhs, sep="\n")
-
     for group_sizes in multiple_group_sizes:
-        print("\ngroup_sizes", group_sizes, sep="\n")
-
+        out_torch.zero_()
         torch_tgmm(
             lhs,
             rhs,
@@ -290,8 +288,8 @@ def test_tgmm(
             trans_out=trans_out,
             existing_out=out_torch,
         )
-        print("\nout_torch", out_torch, sep="\n")
 
+        out_triton.zero_()
         triton_tgmm(
             lhs,
             rhs,
@@ -301,7 +299,6 @@ def test_tgmm(
             existing_out=out_triton,
             autotune=autotune,
         )
-        print("\nout_triton", out_triton, sep="\n")
 
         check_tensors(
             out_triton, out_torch, "Triton TGMM doesn't match PyTorch reference TGMM."

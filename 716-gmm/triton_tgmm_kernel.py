@@ -149,8 +149,8 @@ def triton_tgmm_kernel_core(
 
             acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
 
-            for mm in range(0, tl.cdiv(M, BLOCK_SIZE_M)):
-                m_mask_limit = M - mm * BLOCK_SIZE_M
+            for mm in range(0, tl.cdiv(m, BLOCK_SIZE_M)):
+                m_mask_limit = m - mm * BLOCK_SIZE_M
                 lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m_mask_limit, other=0)
                 rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m_mask_limit, other=0)
 

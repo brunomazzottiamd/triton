@@ -49,6 +49,10 @@ def torch_tgmm(
 
         # Skip group if there are no columns assigned to the group.
         if m == 0:
+            # Set empty group output to zeros.
+            out[g] = torch.zeros(
+                (K, N), dtype=preferred_element_type, device=lhs.device
+            )
             continue
 
         start_idx = last_col
