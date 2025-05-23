@@ -18,7 +18,7 @@ import triton.language as tl
 
 @triton.jit
 @typing.no_type_check
-def triton_gmm_kernel_core(
+def triton_tgmm_kernel_core(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -30,18 +30,17 @@ def triton_gmm_kernel_core(
     N: int,
     G: int,
     # Tensor strides:
-    stride_lhs_m: int,
     stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
+    stride_lhs_m: int,
+    stride_rhs_m: int,
     stride_rhs_n: int,
-    stride_out_m: int,
+    stride_out_g: int,
+    stride_out_k: int,
     stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
-    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE: tl.constexpr,
     GRID_DIM: tl.constexpr,
 ):
@@ -52,21 +51,27 @@ def triton_gmm_kernel_core(
 
     tl.assume(stride_lhs_m > 0)
     tl.assume(stride_lhs_k > 0)
-    tl.assume(stride_rhs_g > 0)
-    tl.assume(stride_rhs_k > 0)
+    tl.assume(stride_rhs_m > 0)
     tl.assume(stride_rhs_n > 0)
-    tl.assume(stride_out_m > 0)
+    tl.assume(stride_out_g > 0)
+    tl.assume(stride_out_k > 0)
     tl.assume(stride_out_n > 0)
+
+    num_k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+    tl.device_assert(num_k_tiles > 0, "num_k_tiles <= 0")
 
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-    # stride_lhs_k = 1 when lhs is row-major
-    lhs_step = BLOCK_SIZE_K * stride_lhs_k
+    num_tiles = num_k_tiles * num_n_tiles
+    tl.device_assert(num_tiles > 0, "num_tiles <= 0")
+
+    # stride_lhs_m = 1 when lhs is row-major
+    lhs_step = BLOCK_SIZE_M * stride_lhs_m
     tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-    # stride_rhs_k = 1 when rhs is column-major
-    rhs_step = BLOCK_SIZE_K * stride_rhs_k
+    # stride_rhs_m = 1 when rhs is column-major
+    rhs_step = BLOCK_SIZE_M * stride_rhs_m
     tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
@@ -76,26 +81,18 @@ def triton_gmm_kernel_core(
     # Tile limit of last MM problem (inclusive).
     last_mm_tile = 0
 
-    # Last input row of lhs and output row of out. Each group reads some rows of
-    # lhs and writes some rows to out.
+    # Last input column of lhs and input row of rhs. Each group reads some
+    # columns of lhs and some rows of rhs.
     last_m = 0
 
-    # Loop through all (m, K, N) MM problems:
-    #   (m, K) x (K, N) = (m, N)
+    # Loop through all (K, m, N) MM problems:
+    #   (K, m) x (m, N) = (K, N)
     #   sum(m) = M
     for g in range(G):
         # Get m dimension of current MM problem.
         m = tl.load(group_sizes_ptr + g)
         # m can be zero if group is empty
         tl.device_assert(m >= 0, "m < 0")
-
-        num_m_tiles = tl.cdiv(m, BLOCK_SIZE_M)
-        # num_m_tiles can be zero if group is empty
-        tl.device_assert(num_m_tiles >= 0, "num_m_tiles < 0")
-
-        num_tiles = num_m_tiles * num_n_tiles
-        # num_tiles can be zero if group is empty
-        tl.device_assert(num_tiles >= 0, "num_tiles < 0")
 
         # Loop through tiles of current MM problem.
         while tile >= last_mm_tile and tile < last_mm_tile + num_tiles:
@@ -104,68 +101,58 @@ def triton_gmm_kernel_core(
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
             if GROUP_SIZE == 1:
-                tile_m = tile_in_mm // num_n_tiles
+                tile_k = tile_in_mm // num_n_tiles
                 tile_n = tile_in_mm % num_n_tiles
             else:
                 # Re-order program ID for better L2 performance.
                 num_tiles_in_group = GROUP_SIZE * num_n_tiles
                 group_id = tile_in_mm // num_tiles_in_group
-                first_tile_m = group_id * GROUP_SIZE
-                group_size_m = min(num_m_tiles - first_tile_m, GROUP_SIZE)
-                tile_m = first_tile_m + (tile_in_mm % group_size_m)
-                tile_n = (tile_in_mm % num_tiles_in_group) // group_size_m
+                first_tile_k = group_id * GROUP_SIZE
+                group_size_k = min(num_k_tiles - first_tile_k, GROUP_SIZE)
+                tile_k = first_tile_k + (tile_in_mm % group_size_k)
+                tile_n = (tile_in_mm % num_tiles_in_group) // group_size_k
 
-            tl.device_assert(tile_m >= 0, "tile_m < 0")
-            tl.device_assert(tile_m < num_m_tiles, "tile_m >= num_m_tiles")
+            tl.device_assert(tile_k >= 0, "tile_k < 0")
+            tl.device_assert(tile_k < num_k_tiles, "tile_k >= num_k_tiles")
 
             tl.device_assert(tile_n >= 0, "tile_n < 0")
             tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
 
             # Do regular MM:
 
-            tl.device_assert(tile_m * BLOCK_SIZE_M >= 0, "tile_m * BLOCK_SIZE_M < 0")
+            tl.device_assert(tile_k * BLOCK_SIZE_K >= 0, "tile_k * BLOCK_SIZE_K < 0")
             tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
 
-            offs_lhs_m = (
-                tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            ) % m
+            offs_lhs_k = (
+                tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+            ) % K
             offs_rhs_n = (
                 tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             ) % N
-            offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
+            offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
 
-            # stride_lhs_m = 1 when lhs is column-major
-            # stride_lhs_k = 1 when lhs is row-major
+            # stride_lhs_k = 1 when lhs is column-major
+            # stride_lhs_m = 1 when lhs is row-major
             lhs_ptrs = (
                 lhs_ptr
-                + (last_m + offs_lhs_m[:, None]) * stride_lhs_m
-                + offs_k[None, :] * stride_lhs_k
+                + offs_lhs_k[:, None] * stride_lhs_k
+                + (last_m + offs_m[None, :]) * stride_lhs_m
             )
 
-            # stride_rhs_g is always K * N
-            # stride_rhs_k = 1 when rhs is column-major
+            # stride_rhs_m = 1 when rhs is column-major
             # stride_rhs_n = 1 when rhs is row-major
             rhs_ptrs = (
                 rhs_ptr
-                + g.to(tl.int64) * stride_rhs_g
-                + offs_k[:, None] * stride_rhs_k
+                + (last_m + offs_m[:, None]) * stride_rhs_m
                 + offs_rhs_n[None, :] * stride_rhs_n
             )
 
-            acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+            acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
 
-            for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-                if K_DIVISIBLE_BY_BLOCK_SIZE_K:
-                    lhs = tl.load(lhs_ptrs)
-                    rhs = tl.load(rhs_ptrs)
-                else:
-                    k_mask_limit = K - k * BLOCK_SIZE_K
-                    lhs = tl.load(
-                        lhs_ptrs, mask=offs_k[None, :] < k_mask_limit, other=0
-                    )
-                    rhs = tl.load(
-                        rhs_ptrs, mask=offs_k[:, None] < k_mask_limit, other=0
-                    )
+            for mm in range(0, tl.cdiv(M, BLOCK_SIZE_M)):
+                m_mask_limit = M - mm * BLOCK_SIZE_M
+                lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m_mask_limit, other=0)
+                rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m_mask_limit, other=0)
 
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
@@ -174,21 +161,23 @@ def triton_gmm_kernel_core(
 
             acc = acc.to(out_ptr.type.element_ty)
 
-            offs_out_m = tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            offs_out_k = tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
             offs_out_n = tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
 
-            # stride_out_m = 1 when out is column-major
+            # stride_out_g is always K * N
+            # stride_out_k = 1 when out is column-major
             # stride_out_n = 1 when out is row-major
             out_ptrs = (
                 out_ptr
-                + (last_m + offs_out_m[:, None]) * stride_out_m
+                + g.to(tl.int64) * stride_out_g
+                + offs_out_k[:, None] * stride_out_k
                 + offs_out_n[None, :] * stride_out_n
             )
 
             tl.store(
                 out_ptrs,
                 acc,
-                mask=(offs_out_m[:, None] < m) & (offs_out_n[None, :] < N),
+                mask=(offs_out_k[:, None] < K) & (offs_out_n[None, :] < N),
             )
 
             # Go to the next tile by advancing number of programs.

@@ -7,7 +7,6 @@
 # Python standard library
 import logging
 import typing
-from typing import Any, Callable
 
 # PyTorch
 import torch
@@ -22,30 +21,24 @@ from dtypes import DTYPE
 
 # Common module
 from common import TRANS_OUT, is_power_of_2, check_input_device_dtype
-from gmm_common import get_gmm_shape, get_gmm_output, get_gmm_transposition
+from tgmm_common import get_tgmm_shape, get_tgmm_output, get_tgmm_transposition
 from triton_common import full_tuning_space
 
 # GMM kernel
-from triton_gmm_kernel import triton_gmm_kernel_core
+from triton_tgmm_kernel import triton_tgmm_kernel_core
 
 # Tuning database
-from best_config import BEST_CONFIGS, pick_best_config
+from best_config import Config
 
 
-# Triton GMM implementation.
+# Triton TGMM implementation.
 # ------------------------------------------------------------------------------
 
 
-def gmm_heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
-    return {
-        "K_DIVISIBLE_BY_BLOCK_SIZE_K": lambda META: META["K"] % META["BLOCK_SIZE_K"]
-        == 0,
-    }
-
-
-def gmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Config]:
+def tgmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Config]:
     if not use_full_tuning_space:
-        # Grab all distinct configs from tuning database.
+        # There is no tuning database yet, just use the default configuration.
+        config = Config()
         return [
             triton.Config(
                 {
@@ -58,16 +51,14 @@ def gmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Con
                 num_warps=config.num_warps,
                 num_stages=config.num_stages,
             )
-            for config in set(BEST_CONFIGS.values())
         ]
     else:
         return full_tuning_space()
 
 
-@triton.heuristics(gmm_heuristics())
 @triton.jit
 @typing.no_type_check
-def triton_gmm_kernel(
+def triton_tgmm_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -79,47 +70,44 @@ def triton_gmm_kernel(
     N: int,
     G: int,
     # Tensor strides:
-    stride_lhs_m: int,
     stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
+    stride_lhs_m: int,
+    stride_rhs_m: int,
     stride_rhs_n: int,
-    stride_out_m: int,
+    stride_out_g: int,
+    stride_out_k: int,
     stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
-    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE: tl.constexpr,
     GRID_DIM: tl.constexpr,
 ):
     # fmt: off
-    triton_gmm_kernel_core(
+    triton_tgmm_kernel_core(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
         # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
+        stride_lhs_k, stride_lhs_m,
+        stride_rhs_m, stride_rhs_n,
+        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
-        K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE=GROUP_SIZE,
         GRID_DIM=GRID_DIM,
     )
     # fmt: on
 
 
-@triton.autotune(configs=gmm_autotune_configs(), key=["M", "K", "N", "G"])
-@triton.heuristics(gmm_heuristics())
+@triton.autotune(configs=tgmm_autotune_configs(), key=["M", "K", "N", "G"])
 @triton.jit
 @typing.no_type_check
-def triton_autotuned_gmm_kernel(
+def triton_autotuned_tgmm_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -131,36 +119,34 @@ def triton_autotuned_gmm_kernel(
     N: int,
     G: int,
     # Tensor strides:
-    stride_lhs_m: int,
     stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
+    stride_lhs_m: int,
+    stride_rhs_m: int,
     stride_rhs_n: int,
-    stride_out_m: int,
+    stride_out_g: int,
+    stride_out_k: int,
     stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
-    K_DIVISIBLE_BY_BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE: tl.constexpr,
     GRID_DIM: tl.constexpr,
 ):
     # fmt: off
-    triton_gmm_kernel_core(
+    triton_tgmm_kernel_core(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
         # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
+        stride_lhs_k, stride_lhs_m,
+        stride_rhs_m, stride_rhs_n,
+        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
-        K_DIVISIBLE_BY_BLOCK_SIZE_K=K_DIVISIBLE_BY_BLOCK_SIZE_K,
         GROUP_SIZE=GROUP_SIZE,
         GRID_DIM=GRID_DIM,
     )
@@ -168,33 +154,30 @@ def triton_autotuned_gmm_kernel(
 
 
 def compute_grid(
-    N: int,
-    block_size_m: int,
-    block_size_n: int,
-    group_sizes: Tensor,
-    grid_dim: int,
+    K: int, N: int, block_size_k: int, block_size_n: int, grid_dim: int
 ) -> tuple[int]:
+    assert K > 0, f"K must be positive, it's {K}."
     assert N > 0, f"N must be positive, it's {N}."
     assert is_power_of_2(
-        block_size_m
-    ), f"M-dimension tile size must be a power of 2 (it's {block_size_m})."
+        block_size_k
+    ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
     assert is_power_of_2(
         block_size_n
     ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
-    assert torch.all(group_sizes >= 0).item(), "All group_sizes must be non-negative."
     assert grid_dim > 0, f"Grid dimension must be positive (it's {grid_dim})."
-    num_m_tiles = (group_sizes + block_size_m - 1) // block_size_m
-    assert torch.all(num_m_tiles >= 0).item(), "All num_m_tiles must be non-negative."
+    num_k_tiles = triton.cdiv(K, block_size_k)
+    assert num_k_tiles > 0, f"num_k_tiles must be positive, it's {num_k_tiles}."
     num_n_tiles = triton.cdiv(N, block_size_n)
     assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
-    num_tiles = torch.sum(num_m_tiles * num_n_tiles).item()
+    num_tiles = num_k_tiles * num_n_tiles
+    assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
     assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
     num_programs = int(min(grid_dim, num_tiles))
     assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
     return (num_programs,)
 
 
-def triton_gmm(
+def triton_tgmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
@@ -205,43 +188,34 @@ def triton_gmm(
 ) -> Tensor:
     check_input_device_dtype(lhs, rhs, group_sizes)
 
-    M, K, N, G = get_gmm_shape(lhs, rhs, group_sizes)
+    M, K, N, G = get_tgmm_shape(lhs, rhs, group_sizes)
 
-    out = get_gmm_output(
-        M,
+    out = get_tgmm_output(
+        K,
         N,
+        G,
         device=lhs.device,
         preferred_element_type=preferred_element_type,
         trans=trans_out,
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
+    trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
 
     if not autotune:
-        best_config = pick_best_config(
-            M,
-            K,
-            N,
-            G,
-            group_sizes=group_sizes,
-            input_type=lhs.dtype,
-            output_type=out.dtype,
-            trans_lhs=trans_lhs,
-            trans_rhs=trans_rhs,
-            trans_out=trans_out,
-        )
+        # TODO: Implement tuning database and `pick_best_tgmm_config`.
+        best_config = Config()
 
         grid = compute_grid(
+            K,
             N,
-            best_config.block_size_m,
+            best_config.block_size_k,
             best_config.block_size_n,
-            group_sizes,
             best_config.grid_dim,
         )
 
         # fmt: off
-        triton_gmm_kernel[grid](
+        triton_tgmm_kernel[grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
@@ -258,18 +232,14 @@ def triton_gmm(
         # fmt: on
 
     else:
-        logging.debug("Running autotuned GMM kernel.")
+        logging.debug("Running autotuned TGMM kernel.")
 
         autotuned_grid = lambda META: compute_grid(
-            N,
-            META["BLOCK_SIZE_M"],
-            META["BLOCK_SIZE_N"],
-            group_sizes,
-            META["GRID_DIM"],
+            K, N, META["BLOCK_SIZE_K"], META["BLOCK_SIZE_N"], META["GRID_DIM"]
         )
 
         # fmt: off
-        triton_autotuned_gmm_kernel[autotuned_grid](
+        triton_autotuned_tgmm_kernel[autotuned_grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
