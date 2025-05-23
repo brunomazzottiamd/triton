@@ -154,10 +154,11 @@ def triton_autotuned_tgmm_kernel(
 
 
 def compute_grid(
-    K: int, N: int, block_size_k: int, block_size_n: int, grid_dim: int
+    K: int, N: int, G: int, block_size_k: int, block_size_n: int, grid_dim: int
 ) -> tuple[int]:
     assert K > 0, f"K must be positive, it's {K}."
     assert N > 0, f"N must be positive, it's {N}."
+    assert G > 0, f"G must be positive, it's {G}."
     assert is_power_of_2(
         block_size_k
     ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
@@ -169,10 +170,9 @@ def compute_grid(
     assert num_k_tiles > 0, f"num_k_tiles must be positive, it's {num_k_tiles}."
     num_n_tiles = triton.cdiv(N, block_size_n)
     assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
-    num_tiles = num_k_tiles * num_n_tiles
+    num_tiles = G * num_k_tiles * num_n_tiles
     assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
-    assert num_tiles > 0, f"num_tiles must be positive, it's {num_tiles}."
-    num_programs = int(min(grid_dim, num_tiles))
+    num_programs = min(grid_dim, num_tiles)
     assert num_programs > 0, f"num_programs must be positive, it's {num_programs}."
     return (num_programs,)
 
@@ -209,6 +209,7 @@ def triton_tgmm(
         grid = compute_grid(
             K,
             N,
+            G,
             best_config.block_size_k,
             best_config.block_size_n,
             best_config.grid_dim,
@@ -227,7 +228,7 @@ def triton_tgmm(
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
             GROUP_SIZE=best_config.group_size,
-            GRID_DIM=best_config.grid_dim,
+            GRID_DIM=grid[0],
         )
         # fmt: on
 
@@ -235,7 +236,7 @@ def triton_tgmm(
         logging.debug("Running autotuned TGMM kernel.")
 
         autotuned_grid = lambda META: compute_grid(
-            K, N, META["BLOCK_SIZE_K"], META["BLOCK_SIZE_N"], META["GRID_DIM"]
+            K, N, G, META["BLOCK_SIZE_K"], META["BLOCK_SIZE_N"], META["GRID_DIM"]
         )
 
         # fmt: off
