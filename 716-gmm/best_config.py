@@ -62,7 +62,7 @@ class Config:
     block_size_m: int = TILING[0]
     block_size_k: int = TILING[1]
     block_size_n: int = TILING[2]
-    group_size_m: int = 1
+    group_size: int = 1
     grid_dim: int = num_sms()
     num_warps: int = 4
     num_stages: int = 1
@@ -78,8 +78,8 @@ class Config:
             self.block_size_n
         ), f"N-dimension tile size must be a power of 2 (it's {self.block_size_n})."
         assert (
-            self.group_size_m > 0
-        ), f"Group size in M-dimension must be positive (it's {self.group_size_m})."
+            self.group_size > 0
+        ), f"Group size must be positive (it's {self.group_size})."
         assert (
             self.grid_dim > 0
         ), f"Grid dimension must be positive (it's {self.grid_dim})."
@@ -99,23 +99,23 @@ class Config:
 # fmt: off
 BEST_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m= 64, block_size_k=32, block_size_n=256, group_size_m=1, num_warps=8, num_stages=2),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size_m=2, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size_m=4, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size_m=2, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size_m=2, num_warps=8, num_stages=1),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m= 64, block_size_k=32, block_size_n=256, group_size=1, num_warps=8, num_stages=2),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=4, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
     # bf16 bf16 NN
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=128, block_size_k=32, block_size_n=128, group_size_m=2, num_warps=8, num_stages=2),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=4, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=2, num_warps=4, num_stages=1),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=128, block_size_k=32, block_size_n=128, group_size=2, num_warps=8, num_stages=2),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=4, num_warps=8, num_stages=1),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=2, num_warps=4, num_stages=1),
     # bf16 bf16 NT
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=4, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=2, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size_m=8, num_warps=8, num_stages=2),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=2, num_warps=4, num_stages=1),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=8, num_stages=2),
 }
 # fmt: on
 
