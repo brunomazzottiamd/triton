@@ -32,6 +32,7 @@ from triton_gmm import triton_gmm
 
 # TGMM implementations
 from torch_tgmm import torch_tgmm
+from triton_tgmm import triton_tgmm
 
 
 # Common utilities used by GMM and TGMM tests.
@@ -131,6 +132,19 @@ def use_triton_autotune(quick_test: bool, M: int, K: int, N: int, G: int) -> boo
     return not (((M, K, N, G) in TEST_ONLY_SHAPES) or quick_test)
 
 
+# Tensor comparison.
+
+
+def check_tensors(actual: Tensor, expected: Tensor, msg: str) -> None:
+    torch.testing.assert_close(
+        actual,
+        expected,
+        atol=5e-3,
+        rtol=1e-2,
+        msg=lambda torch_msg: f"{msg}\n\n{torch_msg}\n",
+    )
+
+
 # GMM unit tests.
 # ------------------------------------------------------------------------------
 
@@ -202,7 +216,9 @@ def test_gmm(
             autotune=autotune,
         )
 
-        torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
+        check_tensors(
+            out_triton, out_torch, "Triton GMM doesn't match PyTorch reference GMM."
+        )
 
 
 # TGMM unit tests.
@@ -254,9 +270,11 @@ def test_tgmm(
     out_torch = gen_tgmm_output(
         K, N, G, preferred_element_type=out_dtype, trans=trans_out
     )
-    # out_triton = gen_tgmm_output(K, N, G, preferred_element_type=out_dtype, trans=trans_out)
+    out_triton = gen_tgmm_output(
+        K, N, G, preferred_element_type=out_dtype, trans=trans_out
+    )
 
-    # autotune = use_triton_autotune(quick_test, M, K, N, G)
+    autotune = use_triton_autotune(quick_test, M, K, N, G)
 
     for group_sizes in multiple_group_sizes:
         torch_tgmm(
@@ -268,14 +286,16 @@ def test_tgmm(
             existing_out=out_torch,
         )
 
-        # triton_tgmm(
-        #     lhs,
-        #     rhs,
-        #     group_sizes,
-        #     preferred_element_type=out_dtype,
-        #     trans_out=trans_out,
-        #     existing_out=out_triton,
-        #     autotune=autotune,
-        # )
+        triton_tgmm(
+            lhs,
+            rhs,
+            group_sizes,
+            preferred_element_type=out_dtype,
+            trans_out=trans_out,
+            existing_out=out_triton,
+            autotune=autotune,
+        )
 
-        # torch.testing.assert_close(out_torch, out_triton, atol=5e-3, rtol=1e-2)
+        check_tensors(
+            out_triton, out_torch, "Triton TGMM doesn't match PyTorch reference TGMM."
+        )
