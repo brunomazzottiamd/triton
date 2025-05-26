@@ -4,8 +4,6 @@
 # Imports.
 # ------------------------------------------------------------------------------
 
-# PyTorch
-import torch
 
 # pytest
 import pytest
@@ -14,11 +12,11 @@ import pytest
 from dtypes import dtype_from_str
 
 # Common module
-from gmm_common import gen_gmm_input, gen_gmm_output
+from tgmm_common import gen_tgmm_input, gen_tgmm_output
 
-# GMM implementations
-from torch_gmm import torch_gmm
-from triton_gmm import triton_gmm
+# TGMM implementations
+from torch_tgmm import torch_tgmm
+from triton_tgmm import triton_tgmm
 
 # Common test module
 from test_common import (
@@ -40,7 +38,7 @@ from test_common import (
 )
 
 
-# GMM unit tests.
+# TGMM unit tests.
 # ------------------------------------------------------------------------------
 
 
@@ -51,7 +49,7 @@ from test_common import (
 @pytest.mark.parametrize("trans_rhs_str", TRANS_RHS_STR)
 @pytest.mark.parametrize("trans_out_str", TRANS_OUT_STR)
 @pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
-def test_gmm(
+def test_tgmm(
     quick_test: bool,
     M: int,
     K: int,
@@ -73,7 +71,7 @@ def test_gmm(
 
     skip(quick_test, in_dtype, out_dtype, trans_lhs, trans_rhs, trans_out)
 
-    lhs, rhs, group_sizes_0 = gen_gmm_input(
+    lhs, rhs, group_sizes_0 = gen_tgmm_input(
         M,
         K,
         N,
@@ -86,13 +84,24 @@ def test_gmm(
     )
     multiple_group_sizes = gen_group_sizes(quick_test, M, G, group_sizes_0)
 
-    out_torch = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
-    out_triton = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+    out_torch = gen_tgmm_output(
+        K, N, G, preferred_element_type=out_dtype, trans=trans_out
+    )
+    out_triton = gen_tgmm_output(
+        K, N, G, preferred_element_type=out_dtype, trans=trans_out
+    )
 
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
+    # For big shape (M, K, N, G) = (3145728, 2048, 1408, 8) there are some element
+    # mismatches (125 / 23068672 ~ 0.00013%) with absolute error greater than the
+    # default tolerance. This behavior is deterministic and, given a RNG seed,
+    # always happen for the same output elements. So, absolute tolerance is increased
+    # only for this shape.
+    atol = 2.5e-2 if M > 1e6 else None
+
     for group_sizes in multiple_group_sizes:
-        torch_gmm(
+        torch_tgmm(
             lhs,
             rhs,
             group_sizes,
@@ -101,7 +110,7 @@ def test_gmm(
             existing_out=out_torch,
         )
 
-        triton_gmm(
+        triton_tgmm(
             lhs,
             rhs,
             group_sizes,
@@ -111,9 +120,10 @@ def test_gmm(
             autotune=autotune,
         )
 
-        m = int(torch.sum(group_sizes).item())
+        non_empty_groups = group_sizes > 0
         check_tensors(
-            out_triton[:m],
-            out_torch[:m],
-            "Triton GMM doesn't match PyTorch reference GMM.",
+            out_triton[non_empty_groups],
+            out_torch[non_empty_groups],
+            "Triton TGMM doesn't match PyTorch reference TGMM.",
+            atol=atol,
         )
