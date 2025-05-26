@@ -91,9 +91,9 @@ def gen_gmm_output(
     assert N > 0, f"Number of out columns N must be positive (N = {N})."
 
     if trans:
-        out = torch.zeros((N, M), dtype=preferred_element_type, device=device).T
+        out = torch.empty((N, M), dtype=preferred_element_type, device=device).T
     else:
-        out = torch.zeros((M, N), dtype=preferred_element_type, device=device)
+        out = torch.empty((M, N), dtype=preferred_element_type, device=device)
 
     return out
 

@@ -197,7 +197,6 @@ def test_gmm(
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
     for group_sizes in multiple_group_sizes:
-        out_torch.zero_()
         torch_gmm(
             lhs,
             rhs,
@@ -207,7 +206,6 @@ def test_gmm(
             existing_out=out_torch,
         )
 
-        out_triton.zero_()
         triton_gmm(
             lhs,
             rhs,
@@ -218,8 +216,11 @@ def test_gmm(
             autotune=autotune,
         )
 
+        m = int(torch.sum(group_sizes).item())
         check_tensors(
-            out_triton, out_torch, "Triton GMM doesn't match PyTorch reference GMM."
+            out_triton[:m],
+            out_torch[:m],
+            "Triton GMM doesn't match PyTorch reference GMM.",
         )
 
 
@@ -279,7 +280,6 @@ def test_tgmm(
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
     for group_sizes in multiple_group_sizes:
-        out_torch.zero_()
         torch_tgmm(
             lhs,
             rhs,
@@ -289,7 +289,6 @@ def test_tgmm(
             existing_out=out_torch,
         )
 
-        out_triton.zero_()
         triton_tgmm(
             lhs,
             rhs,
@@ -300,6 +299,9 @@ def test_tgmm(
             autotune=autotune,
         )
 
+        non_empty_groups = group_sizes > 0
         check_tensors(
-            out_triton, out_torch, "Triton TGMM doesn't match PyTorch reference TGMM."
+            out_triton[non_empty_groups],
+            out_torch[non_empty_groups],
+            "Triton TGMM doesn't match PyTorch reference TGMM.",
         )
