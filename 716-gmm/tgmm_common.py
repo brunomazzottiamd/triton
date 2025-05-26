@@ -91,11 +91,11 @@ def gen_tgmm_output(
     assert G > 0, f"Number of groups G must be positive (G = {G})."
 
     if trans:
-        out = torch.zeros(
+        out = torch.empty(
             (G, N, K), dtype=preferred_element_type, device=device
         ).permute(0, 2, 1)
     else:
-        out = torch.zeros((G, K, N), dtype=preferred_element_type, device=device)
+        out = torch.empty((G, K, N), dtype=preferred_element_type, device=device)
 
     return out
 
