@@ -5,6 +5,9 @@
 # ------------------------------------------------------------------------------
 
 
+# PyTorch
+import torch
+
 # pytest
 import pytest
 
@@ -12,7 +15,7 @@ import pytest
 from dtypes import dtype_from_str
 
 # Common module
-from tgmm_common import gen_tgmm_input, gen_tgmm_output
+from tgmm_common import gen_tgmm_tensors
 
 # TGMM implementations
 from torch_tgmm import torch_tgmm
@@ -32,7 +35,7 @@ from test_common import (
     trans_out_from_str,
     rng_seed_from_str,
     skip,
-    gen_group_sizes,
+    num_group_sizes,
     use_triton_autotune,
     check_tensors,
 )
@@ -71,25 +74,21 @@ def test_tgmm(
 
     skip(quick_test, in_dtype, out_dtype, trans_lhs, trans_rhs, trans_out)
 
-    lhs, rhs, group_sizes_0 = gen_tgmm_input(
+    lhs, rhs, multiple_group_sizes, out_torch = gen_tgmm_tensors(
         M,
         K,
         N,
         G,
-        preferred_element_type=in_dtype,
+        num_group_sizes(quick_test),
+        input_type=in_dtype,
+        output_type=out_dtype,
         trans_lhs=trans_lhs,
         trans_rhs=trans_rhs,
+        trans_out=trans_out,
         rng_seed=rng_seed,
         unif_group_sizes=True,  # 1st group_sizes in test is evenly distributed
     )
-    multiple_group_sizes = gen_group_sizes(quick_test, M, G, group_sizes_0)
-
-    out_torch = gen_tgmm_output(
-        K, N, G, preferred_element_type=out_dtype, trans=trans_out
-    )
-    out_triton = gen_tgmm_output(
-        K, N, G, preferred_element_type=out_dtype, trans=trans_out
-    )
+    out_triton = torch.empty_like(out_torch)
 
     autotune = use_triton_autotune(quick_test, M, K, N, G)
 
