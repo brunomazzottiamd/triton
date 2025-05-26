@@ -29,7 +29,7 @@ from triton_common import full_tuning_space
 from triton_gmm_kernel import triton_gmm_kernel_core
 
 # Tuning database
-from best_config import BEST_CONFIGS, pick_best_config
+from best_config import pick_best_gmm_config, unique_triton_gmm_configs
 
 
 # Triton GMM implementation.
@@ -44,24 +44,7 @@ def gmm_heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
 
 
 def gmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Config]:
-    if not use_full_tuning_space:
-        # Grab all distinct configs from tuning database.
-        return [
-            triton.Config(
-                {
-                    "BLOCK_SIZE_M": config.block_size_m,
-                    "BLOCK_SIZE_K": config.block_size_k,
-                    "BLOCK_SIZE_N": config.block_size_n,
-                    "GROUP_SIZE": config.group_size,
-                    "GRID_DIM": config.grid_dim,
-                },
-                num_warps=config.num_warps,
-                num_stages=config.num_stages,
-            )
-            for config in set(BEST_CONFIGS.values())
-        ]
-    else:
-        return full_tuning_space()
+    return full_tuning_space() if use_full_tuning_space else unique_triton_gmm_configs()
 
 
 @triton.heuristics(gmm_heuristics())
@@ -216,10 +199,10 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
-
     if not autotune:
-        best_config = pick_best_config(
+        trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
+
+        best_config = pick_best_gmm_config(
             M,
             K,
             N,
