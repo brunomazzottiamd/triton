@@ -6,10 +6,14 @@
 
 # Python standard library
 from dataclasses import dataclass
+from functools import partial
 import logging
 
 # PyTorch
 import torch
+
+# Triton
+import triton
 
 # Types module
 from dtypes import SUPPORTED_DTYPES, DTYPE
@@ -95,9 +99,9 @@ class Config:
 # ------------------------------------------------------------------------------
 
 
-# Tuning database for gfx942.
+# GMM tuning database for gfx942.
 # fmt: off
-BEST_CONFIGS: dict[ConfigKey, Config] = {
+BEST_GMM_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m= 64, block_size_k=32, block_size_n=256, group_size=1, num_warps=8, num_stages=2),
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
@@ -120,11 +124,39 @@ BEST_CONFIGS: dict[ConfigKey, Config] = {
 # fmt: on
 
 
+# TGMM tuning database for gfx942.
+# TODO: Perform tuning and update best configs!
+# fmt: off
+BEST_TGMM_CONFIGS: dict[ConfigKey, Config] = {
+    # bf16 bf16 TN
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(),
+    # bf16 bf16 NN
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(),
+    # bf16 bf16 NT
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+}
+# fmt: on
+
+
 # Selection of best kernel configuration.
 # ------------------------------------------------------------------------------
 
 
-def pick_best_config(
+def _pick_best_config(
+    desc: str,
+    best_configs: dict[ConfigKey, Config],
     M: int,
     K: int,
     N: int,
@@ -139,12 +171,13 @@ def pick_best_config(
     config_key = ConfigKey(
         M, K, N, G, input_type, output_type, trans_lhs, trans_rhs, trans_out
     )
-    logging.debug("Querying best config for %s.", config_key)
+    logging.debug("Querying best %s config for %s.", desc, config_key)
     try:
-        best_config = BEST_CONFIGS[config_key]
+        best_config = best_configs[config_key]
     except KeyError:
         logging.debug(
-            "Could not find best config for %s, picking default one + block size heuristics.",
+            "Could not find best %s config for %s, picking default one + block size heuristics.",
+            desc,
             config_key,
         )
         block_size_m, block_size_k, block_size_n = get_tiling(
@@ -155,5 +188,37 @@ def pick_best_config(
             block_size_k=block_size_k,
             block_size_n=block_size_n,
         )
-    logging.debug("Best config for %s is %s.", config_key, best_config)
+    logging.debug("Best %s config for %s is %s.", desc, config_key, best_config)
     return best_config
+
+
+pick_best_gmm_config = partial(_pick_best_config, "GMM", BEST_GMM_CONFIGS)
+pick_best_tgmm_config = partial(_pick_best_config, "TGMM", BEST_TGMM_CONFIGS)
+
+
+# Get unique configurations from a given tuning database.
+# (for Triton autotuning purposes)
+# ------------------------------------------------------------------------------
+
+
+def _unique_triton_configs(
+    best_configs: dict[ConfigKey, Config],
+) -> list[triton.Config]:
+    return [
+        triton.Config(
+            {
+                "BLOCK_SIZE_M": config.block_size_m,
+                "BLOCK_SIZE_K": config.block_size_k,
+                "BLOCK_SIZE_N": config.block_size_n,
+                "GROUP_SIZE": config.group_size,
+                "GRID_DIM": config.grid_dim,
+            },
+            num_warps=config.num_warps,
+            num_stages=config.num_stages,
+        )
+        for config in set(best_configs.values())
+    ]
+
+
+unique_triton_gmm_configs = partial(_unique_triton_configs, BEST_GMM_CONFIGS)
+unique_triton_tgmm_configs = partial(_unique_triton_configs, BEST_TGMM_CONFIGS)

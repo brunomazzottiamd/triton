@@ -28,7 +28,7 @@ from triton_common import full_tuning_space
 from triton_tgmm_kernel import triton_tgmm_kernel_core
 
 # Tuning database
-from best_config import Config
+from best_config import pick_best_tgmm_config, unique_triton_tgmm_configs
 
 
 # Triton TGMM implementation.
@@ -36,24 +36,9 @@ from best_config import Config
 
 
 def tgmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Config]:
-    if not use_full_tuning_space:
-        # There is no tuning database yet, just use the default configuration.
-        config = Config()
-        return [
-            triton.Config(
-                {
-                    "BLOCK_SIZE_M": config.block_size_m,
-                    "BLOCK_SIZE_K": config.block_size_k,
-                    "BLOCK_SIZE_N": config.block_size_n,
-                    "GROUP_SIZE": config.group_size,
-                    "GRID_DIM": config.grid_dim,
-                },
-                num_warps=config.num_warps,
-                num_stages=config.num_stages,
-            )
-        ]
-    else:
-        return full_tuning_space()
+    return (
+        full_tuning_space() if use_full_tuning_space else unique_triton_tgmm_configs()
+    )
 
 
 @triton.jit
@@ -200,11 +185,21 @@ def triton_tgmm(
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
-
     if not autotune:
-        # TODO: Implement tuning database and `pick_best_tgmm_config`.
-        best_config = Config()
+        trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
+
+        best_config = pick_best_tgmm_config(
+            M,
+            K,
+            N,
+            G,
+            group_sizes=group_sizes,
+            input_type=lhs.dtype,
+            output_type=out.dtype,
+            trans_lhs=trans_lhs,
+            trans_rhs=trans_rhs,
+            trans_out=trans_out,
+        )
 
         grid = compute_grid(
             K,
@@ -228,7 +223,7 @@ def triton_tgmm(
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
             GROUP_SIZE=best_config.group_size,
-            GRID_DIM=grid[0],
+            GRID_DIM=best_config.grid_dim,
         )
         # fmt: on
 
