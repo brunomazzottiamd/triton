@@ -30,7 +30,11 @@ from common import (
 )
 
 # Group sizes module
-from group_sizes import gen_uniform_group_sizes, gen_group_sizes
+from group_sizes import (
+    gen_uniform_group_sizes,
+    gen_group_sizes,
+    gen_multiple_group_sizes,
+)
 
 
 # Tensor creation functions.
@@ -96,6 +100,42 @@ def gen_gmm_output(
         out = torch.empty((M, N), dtype=preferred_element_type, device=device)
 
     return out
+
+
+def gen_gmm_tensors(
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    num_group_sizes: int,
+    device: torch.device | str = DEVICE,
+    input_type: torch.dtype = DTYPE,
+    output_type: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
+    trans_rhs: bool = TRANS_RHS,
+    trans_out: bool = TRANS_OUT,
+    rng_seed: int | None = RNG_SEED,
+    unif_group_sizes: bool = False,
+) -> tuple[Tensor, Tensor, list[Tensor], Tensor]:
+    lhs, rhs, group_sizes_0 = gen_gmm_input(
+        M,
+        K,
+        N,
+        G,
+        device=device,
+        preferred_element_type=input_type,
+        trans_lhs=trans_lhs,
+        trans_rhs=trans_rhs,
+        rng_seed=rng_seed,
+        unif_group_sizes=unif_group_sizes,
+    )
+    multiple_group_sizes = gen_multiple_group_sizes(
+        num_group_sizes, M, G, device=device, rng_seed=None, group_sizes_0=group_sizes_0
+    )
+    out = gen_gmm_output(
+        M, N, device=device, preferred_element_type=output_type, trans=trans_out
+    )
+    return lhs, rhs, multiple_group_sizes, out
 
 
 # Functions to extract information from generated tensors.

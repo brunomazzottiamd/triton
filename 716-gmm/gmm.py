@@ -35,20 +35,22 @@ from common import (
     NUM_GROUP_SIZES,
     REAL_SHAPES,
 )
-from gmm_common import gen_gmm_input, gen_gmm_output
-
-# Group sizes module
-from group_sizes import gen_multiple_group_sizes
+from gmm_common import gen_gmm_tensors
+from tgmm_common import gen_tgmm_tensors
 
 # Triton GMM implementation
 from triton_gmm import triton_gmm, gmm_autotune_configs, triton_autotuned_gmm_kernel
+
+# Triton TGMM implementation
+from triton_tgmm import triton_tgmm, tgmm_autotune_configs, triton_autotuned_tgmm_kernel
 
 
 # Benchmark.
 # ------------------------------------------------------------------------------
 
 
-def benchmark_triton_gmm(
+def benchmark_triton(
+    gmm_type: str,
     bench_shape: tuple[int, int, int, int] | None = None,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
@@ -59,6 +61,9 @@ def benchmark_triton_gmm(
     num_group_sizes: int = NUM_GROUP_SIZES,
     unif_group_sizes: bool = False,
 ) -> None:
+    assert gmm_type in {"gmm", "tgmm"}, "Invalid GMM type."
+    is_gmm = gmm_type == "gmm"
+
     in_dtype_str = str_from_dtype(in_dtype)
     out_dtype_str = str_from_dtype(out_dtype)
     dtypes_desc = f"i{in_dtype_str}_o{out_dtype_str}"
@@ -71,30 +76,30 @@ def benchmark_triton_gmm(
             line_arg="provider",
             line_vals=[triton_provider],
             line_names=[triton_provider],
-            plot_name=f"triton_gmm_perf_{dtypes_desc}",
+            plot_name=f"triton_{gmm_type}_perf_{dtypes_desc}",
             args={},
             ylabel="TFLOPS",
         )
     )
     def benchmark(M: int, K: int, N: int, G: int, provider: str):
-        assert "triton" in provider, f"GMM provider isn't triton, it's {provider}."
+        assert "triton" in provider, f"Provider isn't triton, it's {provider}."
 
         logging.info("    (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
-        lhs, rhs, group_sizes_0 = gen_gmm_input(
+        gen_tensors = gen_gmm_tensors if is_gmm else gen_tgmm_tensors
+        lhs, rhs, multiple_group_sizes, out = gen_tensors(
             M,
             K,
             N,
             G,
-            preferred_element_type=in_dtype,
+            num_group_sizes,
+            input_type=in_dtype,
+            output_type=out_dtype,
             trans_lhs=trans_lhs,
             trans_rhs=trans_rhs,
+            trans_out=trans_out,
             rng_seed=rng_seed,
             unif_group_sizes=unif_group_sizes,
-        )
-        out = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
-        multiple_group_sizes = gen_multiple_group_sizes(
-            num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
         )
 
         quantiles = [0.5, 0.2, 0.8]
@@ -103,13 +108,15 @@ def benchmark_triton_gmm(
         p80_s_sum = 0.0
         tops_sum = 0.0
 
+        triton_wrapper = triton_gmm if is_gmm else triton_tgmm
+
         for group_sizes in multiple_group_sizes:
             logging.debug(
                 "      group_sizes (first 5) = %s", str(group_sizes[:5].tolist())
             )
 
             p50_ms, p20_ms, p80_ms = triton.testing.do_bench(
-                lambda: triton_gmm(
+                lambda: triton_wrapper(
                     lhs,
                     rhs,
                     group_sizes,
@@ -135,14 +142,17 @@ def benchmark_triton_gmm(
             p50_tflops,
             p80_tflops,
         )
-        logging.info(
-            "      best_config = %s", str(triton_autotuned_gmm_kernel.best_config)
+
+        triton_kernel = (
+            triton_autotuned_gmm_kernel if is_gmm else triton_autotuned_tgmm_kernel
         )
+        logging.info("      best_config = %s", str(triton_kernel.best_config))
 
         return p50_tflops, p20_tflops, p80_tflops
 
-    logging.info("Benchmarking Triton GMM kernel:")
-    num_configs = len(gmm_autotune_configs())
+    logging.info("Benchmarking Triton %s kernel:", "GMM" if is_gmm else "TGMM")
+
+    num_configs = len(gmm_autotune_configs() if is_gmm else tgmm_autotune_configs())
     if num_configs > 50:  # this is a completely arbitrary threshold!
         logging.warning(
             "  Warning: using full tuning space, there are %d configurations.",
@@ -153,11 +163,12 @@ def benchmark_triton_gmm(
             "  Using reduced tuning space, there are %d configurations.",
             num_configs,
         )
+
     logging.info(
-        "  input_type = %s, output_type = %s, num_group_sizes = %d",
+        "  input_type = %s, output_type = %s, rng_seed = %d",
         in_dtype_str,
         out_dtype_str,
-        num_group_sizes,
+        rng_seed,
     )
     logging.info(
         "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
@@ -178,7 +189,8 @@ def benchmark_triton_gmm(
 # ------------------------------------------------------------------------------
 
 
-def run_triton_gmm(
+def run_triton(
+    gmm_type: str,
     M: int,
     K: int,
     N: int,
@@ -192,12 +204,15 @@ def run_triton_gmm(
     num_group_sizes: int = NUM_GROUP_SIZES,
     unif_group_sizes: bool = False,
 ) -> None:
-    logging.info("Running Triton GMM kernel:")
+    assert gmm_type in {"gmm", "tgmm"}, "Invalid GMM type."
+    is_gmm = gmm_type == "gmm"
+
+    logging.info("Running Triton %s kernel:", "GMM" if is_gmm else "TGMM")
     logging.info(
-        "  input_type = %s, output_type = %s, num_group_sizes = %d",
+        "  input_type = %s, output_type = %s, rng_seed = %d",
         str_from_dtype(in_dtype),
         str_from_dtype(out_dtype),
-        num_group_sizes,
+        rng_seed,
     )
     logging.info(
         "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
@@ -212,25 +227,27 @@ def run_triton_gmm(
     )
     logging.info("  (M, K, N, G) = (%d, %d, %d, %d)", M, K, N, G)
 
-    lhs, rhs, group_sizes_0 = gen_gmm_input(
+    gen_tensors = gen_gmm_tensors if is_gmm else gen_tgmm_tensors
+    lhs, rhs, multiple_group_sizes, out = gen_tensors(
         M,
         K,
         N,
         G,
-        preferred_element_type=in_dtype,
+        num_group_sizes,
+        input_type=in_dtype,
+        output_type=out_dtype,
         trans_lhs=trans_lhs,
         trans_rhs=trans_rhs,
+        trans_out=trans_out,
         rng_seed=rng_seed,
         unif_group_sizes=unif_group_sizes,
     )
-    multiple_group_sizes = gen_multiple_group_sizes(
-        num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
-    )
-    out = gen_gmm_output(M, N, preferred_element_type=out_dtype, trans=trans_out)
+
+    triton_wrapper = triton_gmm if is_gmm else triton_tgmm
 
     for group_sizes in multiple_group_sizes:
         logging.debug("    group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))
-        triton_gmm(
+        triton_wrapper(
             lhs,
             rhs,
             group_sizes,
@@ -308,7 +325,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("N", type=positive_int, nargs="?", help="number of columns")
     parser.add_argument("G", type=positive_int, nargs="?", help="number of groups")
 
-    # Type
+    # GMM type
+    parser.add_argument(
+        "--gmm-type",
+        choices={"gmm", "tgmm"},
+        default="gmm",
+        help="GMM variant to run, GMM or TGMM",
+    )
+
+    # Data type
     parser.add_argument(
         "--input-type",
         choices=SUPPORTED_DTYPES_STR,
@@ -380,7 +405,8 @@ def main() -> None:
     out_dtype = dtype_from_str(args.output_type)
 
     if args.bench:
-        benchmark_triton_gmm(
+        benchmark_triton(
+            args.gmm_type,
             bench_shape=None if all(arg is None for arg in shape) else shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,
@@ -392,7 +418,8 @@ def main() -> None:
             unif_group_sizes=args.unif_group_sizes,
         )
     else:
-        run_triton_gmm(
+        run_triton(
+            args.gmm_type,
             *shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,

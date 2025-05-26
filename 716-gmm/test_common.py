@@ -21,9 +21,6 @@ from dtypes import SUPPORTED_DTYPES_STR
 # Common module
 from common import REAL_SHAPES
 
-# Group sizes module
-from group_sizes import gen_multiple_group_sizes
-
 
 # Common utilities used by GMM and TGMM tests.
 # ------------------------------------------------------------------------------
@@ -103,15 +100,9 @@ def skip(
 # Generation of group sizes.
 
 
-def gen_group_sizes(
-    quick_test: bool, M: int, G: int, group_sizes_0: Tensor
-) -> list[Tensor]:
+def num_group_sizes(quick_test: bool) -> int:
     # Reduce number of distinct group sizes in quick test.
-    num_group_sizes = 1 if quick_test else 5
-    multiple_group_sizes = gen_multiple_group_sizes(
-        num_group_sizes, M, G, rng_seed=None, group_sizes_0=group_sizes_0
-    )
-    return multiple_group_sizes
+    return 1 if quick_test else 5
 
 
 # Usage of Triton autotuning feature.
