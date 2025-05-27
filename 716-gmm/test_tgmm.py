@@ -19,7 +19,7 @@ from tgmm_common import gen_tgmm_tensors
 
 # TGMM implementations
 from torch_tgmm import torch_tgmm
-from triton_tgmm import triton_tgmm
+from triton_tgmm import triton_persistent_tgmm
 
 # Common test module
 from test_common import (
@@ -109,7 +109,7 @@ def test_tgmm(
             existing_out=out_torch,
         )
 
-        triton_tgmm(
+        triton_persistent_tgmm(
             lhs,
             rhs,
             group_sizes,
