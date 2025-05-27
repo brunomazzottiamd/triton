@@ -9,13 +9,10 @@
 
 # Python standard library
 import argparse
-from functools import partial
 import logging
-from typing import Any, Callable, TypeAlias
 
 # PyTorch
 import torch
-from torch import Tensor
 
 # Triton
 import triton
@@ -31,7 +28,6 @@ from dtypes import (
 
 # Common module
 from common import (
-    DEVICE,
     TRANS_LHS,
     TRANS_RHS,
     TRANS_OUT,
@@ -61,63 +57,7 @@ from triton_tgmm import (
 # ------------------------------------------------------------------------------
 
 
-# Alias for tensor generating function.
-# fmt: off
-GenTensorsFn: TypeAlias = Callable[
-    [
-        int,                 # M
-        int,                 # K
-        int,                 # N
-        int,                 # G
-        int,                 # num_group_sizes
-      # torch.device | str,  # device
-        torch.dtype,         # input_type
-        torch.dtype,         # output_type
-        bool,                # trans_lhs
-        bool,                # trans_rhs
-        bool,                # trans_out
-        int | None,          # rng_seed
-        bool,                # unif_group_sizes
-    ],
-    tuple[
-        Tensor,              # lhs
-        Tensor,              # rhs
-        list[Tensor],        # multiple_group_sizes
-        Tensor,              # out
-    ],
-]
-# fmt: on
-
-# Alias for kernel wrapper function.
-# fmt: off
-KernelFn: TypeAlias = Callable[
-    [
-        Tensor,         # lhs
-        Tensor,         # rhs
-        Tensor,         # group_sizes
-        torch.dtype,    # preferred_element_type
-        bool,           # trans_out
-        Tensor | None,  # existing_out
-        bool            # autotune
-    ],
-    Tensor,             # out
-]
-# fmt: on
-
-# Alias for autotune configs function.
-# fmt: off
-AutotuneConfigsFn: TypeAlias = Callable[
-    [
-      # bool,            # use_full_tuning_space
-    ],
-    list[triton.Config]  # configs
-]
-# fmt: on
-
-
-def select_triton_kernel(
-    gmm_type: str,
-) -> tuple[str, GenTensorsFn, KernelFn, Any, AutotuneConfigsFn]:
+def select_triton_kernel(gmm_type):
     assert gmm_type in {"gmm", "ptgmm", "tgmm"}, "Invalid GMM type."
     if gmm_type == "gmm":
         desc, gen_tensors, kernel_wrapper, kernel, autotune_configs = (
@@ -145,10 +85,10 @@ def select_triton_kernel(
         )
     return (
         desc,
-        partial(gen_tensors, device=DEVICE),
+        gen_tensors,
         kernel_wrapper,
         kernel,
-        partial(autotune_configs, use_full_tuning_space=False),
+        autotune_configs,
     )
 
 
@@ -200,13 +140,13 @@ def benchmark_triton(
             N,
             G,
             num_group_sizes,
-            in_dtype,
-            out_dtype,
-            trans_lhs,
-            trans_rhs,
-            trans_out,
-            rng_seed,
-            unif_group_sizes,
+            input_type=in_dtype,
+            output_type=out_dtype,
+            trans_lhs=trans_lhs,
+            trans_rhs=trans_rhs,
+            trans_out=trans_out,
+            rng_seed=rng_seed,
+            unif_group_sizes=unif_group_sizes,
         )
 
         quantiles = [0.5, 0.2, 0.8]
@@ -225,10 +165,10 @@ def benchmark_triton(
                     lhs,
                     rhs,
                     group_sizes,
-                    out_dtype,
-                    trans_out,
-                    out,
-                    True,
+                    preferred_element_type=out_dtype,
+                    trans_out=trans_out,
+                    existing_out=out,
+                    autotune=True,
                 ),
                 quantiles=quantiles,
             )
@@ -334,13 +274,13 @@ def run_triton(
         N,
         G,
         num_group_sizes,
-        in_dtype,
-        out_dtype,
-        trans_lhs,
-        trans_rhs,
-        trans_out,
-        rng_seed,
-        unif_group_sizes,
+        input_type=in_dtype,
+        output_type=out_dtype,
+        trans_lhs=trans_lhs,
+        trans_rhs=trans_rhs,
+        trans_out=trans_out,
+        rng_seed=rng_seed,
+        unif_group_sizes=unif_group_sizes,
     )
 
     for group_sizes in multiple_group_sizes:
@@ -349,10 +289,9 @@ def run_triton(
             lhs,
             rhs,
             group_sizes,
-            out_dtype,
-            trans_out,
-            out,
-            False,
+            preferred_element_type=out_dtype,
+            trans_out=trans_out,
+            existing_out=out,
         )
 
 
