@@ -98,7 +98,7 @@ def triton_tgmm_persistent_kernel(
 @triton.autotune(configs=tgmm_persistent_autotune_configs(), key=["M", "K", "N", "G"])
 @triton.jit
 @typing.no_type_check
-def triton_persistent_autotuned_tgmm_kernel(
+def triton_tgmm_persistent_autotuned_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -239,14 +239,19 @@ def triton_persistent_tgmm(
         # fmt: on
 
     else:
-        logging.debug("Running autotuned TGMM kernel.")
+        logging.debug("Running autotuned persistent TGMM kernel.")
 
         autotuned_grid = lambda META: compute_persistent_grid(
-            K, N, G, META["BLOCK_SIZE_K"], META["BLOCK_SIZE_N"], META["GRID_DIM"]
+            K,
+            N,
+            G,
+            META["BLOCK_SIZE_K"],
+            META["BLOCK_SIZE_N"],
+            META["GRID_DIM"],
         )
 
         # fmt: off
-        triton_persistent_autotuned_tgmm_kernel[autotuned_grid](
+        triton_tgmm_persistent_autotuned_kernel[autotuned_grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
@@ -341,7 +346,7 @@ def triton_tgmm_non_persistent_kernel(
 @triton.heuristics(tgmm_non_persistent_heuristics())
 @triton.jit
 @typing.no_type_check
-def triton_tgmm_non_persistent_autotune_kernel(
+def triton_tgmm_non_persistent_autotuned_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -412,3 +417,91 @@ def compute_non_persistent_grid(
         num_tiles_per_mm > 0
     ), f"num_tiles_per_mm must be positive, it's {num_tiles_per_mm}."
     return (G, num_tiles_per_mm)
+
+
+def triton_non_persistent_tgmm(
+    lhs: Tensor,
+    rhs: Tensor,
+    group_sizes: Tensor,
+    preferred_element_type: torch.dtype = DTYPE,
+    trans_out: bool = TRANS_OUT,
+    existing_out: Tensor | None = None,
+    autotune: bool = False,
+) -> Tensor:
+    check_input_device_dtype(lhs, rhs, group_sizes)
+
+    M, K, N, G = get_tgmm_shape(lhs, rhs, group_sizes)
+
+    out = get_tgmm_output(
+        K,
+        N,
+        G,
+        device=lhs.device,
+        preferred_element_type=preferred_element_type,
+        trans=trans_out,
+        existing_out=existing_out,
+    )
+
+    if not autotune:
+        trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
+
+        best_config = pick_best_tgmm_config(
+            M,
+            K,
+            N,
+            G,
+            group_sizes=group_sizes,
+            input_type=lhs.dtype,
+            output_type=out.dtype,
+            trans_lhs=trans_lhs,
+            trans_rhs=trans_rhs,
+            trans_out=trans_out,
+        )
+
+        grid = compute_non_persistent_grid(
+            K,
+            N,
+            G,
+            best_config.block_size_k,
+            best_config.block_size_n,
+        )
+
+        # fmt: off
+        triton_tgmm_non_persistent_kernel[grid](
+            # Tensor pointers:
+            lhs, rhs, group_sizes, out,
+            # Tensor shapes:
+            M, K, N, G,
+            # Tensor strides:
+            *lhs.stride(), *rhs.stride(), *out.stride(),
+            # Meta-parameters:
+            BLOCK_SIZE_M=best_config.block_size_m,
+            BLOCK_SIZE_K=best_config.block_size_k,
+            BLOCK_SIZE_N=best_config.block_size_n,
+            GROUP_SIZE=best_config.group_size,
+        )
+        # fmt: on
+
+    else:
+        logging.debug("Running autotuned non-persistent TGMM kernel.")
+
+        autotuned_grid = lambda META: compute_non_persistent_grid(
+            K,
+            N,
+            G,
+            META["BLOCK_SIZE_K"],
+            META["BLOCK_SIZE_N"],
+        )
+
+        # fmt: off
+        triton_tgmm_non_persistent_autotuned_kernel[autotuned_grid](
+            # Tensor pointers:
+            lhs, rhs, group_sizes, out,
+            # Tensor shapes:
+            M, K, N, G,
+            # Tensor strides:
+            *lhs.stride(), *rhs.stride(), *out.stride(),
+        )
+        # fmt: on
+
+    return out
