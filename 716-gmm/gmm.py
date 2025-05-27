@@ -300,12 +300,18 @@ def run_triton(
 
 
 def positive_int(value: str) -> int:
+    error = argparse.ArgumentTypeError(f"'{value}' is not a positive integer")
     try:
-        int_value = int(value)
+        # First try to convert to float to handle ".0" decimal notation.
+        float_value = float(value)
+        # Check if it's a whole number (no fractional part).
+        if float_value != int(float_value):
+            raise error
+        int_value = int(float_value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+        raise error
     if int_value <= 0:
-        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+        raise error
     return int_value
 
 
