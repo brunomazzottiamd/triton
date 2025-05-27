@@ -41,8 +41,12 @@ from tgmm_common import gen_tgmm_tensors
 # Triton GMM implementation
 from triton_gmm import triton_gmm, gmm_autotune_configs, triton_autotuned_gmm_kernel
 
-# Triton TGMM implementation
-from triton_tgmm import triton_tgmm, tgmm_autotune_configs, triton_autotuned_tgmm_kernel
+# Triton TGMM implementation (persistent only for now)
+from triton_tgmm import (
+    triton_persistent_tgmm,
+    tgmm_persistent_autotune_configs,
+    triton_persistent_autotuned_tgmm_kernel,
+)
 
 
 # Benchmark.
@@ -108,7 +112,7 @@ def benchmark_triton(
         p80_s_sum = 0.0
         tops_sum = 0.0
 
-        triton_wrapper = triton_gmm if is_gmm else triton_tgmm
+        triton_wrapper = triton_gmm if is_gmm else triton_persistent_tgmm
 
         for group_sizes in multiple_group_sizes:
             logging.debug(
@@ -144,7 +148,9 @@ def benchmark_triton(
         )
 
         triton_kernel = (
-            triton_autotuned_gmm_kernel if is_gmm else triton_autotuned_tgmm_kernel
+            triton_autotuned_gmm_kernel
+            if is_gmm
+            else triton_persistent_autotuned_tgmm_kernel
         )
         logging.info("      best_config = %s", str(triton_kernel.best_config))
 
@@ -152,7 +158,9 @@ def benchmark_triton(
 
     logging.info("Benchmarking Triton %s kernel:", "GMM" if is_gmm else "TGMM")
 
-    num_configs = len(gmm_autotune_configs() if is_gmm else tgmm_autotune_configs())
+    num_configs = len(
+        gmm_autotune_configs() if is_gmm else tgmm_persistent_autotune_configs()
+    )
     if num_configs > 50:  # this is a completely arbitrary threshold!
         logging.warning(
             "  Warning: using full tuning space, there are %d configurations.",
@@ -243,7 +251,7 @@ def run_triton(
         unif_group_sizes=unif_group_sizes,
     )
 
-    triton_wrapper = triton_gmm if is_gmm else triton_tgmm
+    triton_wrapper = triton_gmm if is_gmm else triton_persistent_tgmm
 
     for group_sizes in multiple_group_sizes:
         logging.debug("    group_sizes (first 5) = %s", str(group_sizes[:5].tolist()))

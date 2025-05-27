@@ -7,6 +7,7 @@
 # Python standard library
 import logging
 import typing
+from typing import Any, Callable
 
 # PyTorch
 import torch
@@ -25,17 +26,22 @@ from tgmm_common import get_tgmm_shape, get_tgmm_output, get_tgmm_transposition
 from triton_common import full_tuning_space
 
 # GMM kernel
-from triton_tgmm_kernel import triton_tgmm_kernel_core
+from triton_tgmm_kernel import (
+    triton_tgmm_persistent_kernel_core,
+    triton_tgmm_non_persistent_kernel_core,
+)
 
 # Tuning database
 from best_config import pick_best_tgmm_config, unique_triton_tgmm_configs
 
 
-# Triton TGMM implementation.
+# Triton persistent TGMM implementation.
 # ------------------------------------------------------------------------------
 
 
-def tgmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Config]:
+def tgmm_persistent_autotune_configs(
+    use_full_tuning_space: bool = False,
+) -> list[triton.Config]:
     return (
         full_tuning_space() if use_full_tuning_space else unique_triton_tgmm_configs()
     )
@@ -43,7 +49,7 @@ def tgmm_autotune_configs(use_full_tuning_space: bool = False) -> list[triton.Co
 
 @triton.jit
 @typing.no_type_check
-def triton_tgmm_kernel(
+def triton_tgmm_persistent_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -70,7 +76,7 @@ def triton_tgmm_kernel(
     GRID_DIM: tl.constexpr,
 ):
     # fmt: off
-    triton_tgmm_kernel_core(
+    triton_tgmm_persistent_kernel_core(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
@@ -89,10 +95,10 @@ def triton_tgmm_kernel(
     # fmt: on
 
 
-@triton.autotune(configs=tgmm_autotune_configs(), key=["M", "K", "N", "G"])
+@triton.autotune(configs=tgmm_persistent_autotune_configs(), key=["M", "K", "N", "G"])
 @triton.jit
 @typing.no_type_check
-def triton_autotuned_tgmm_kernel(
+def triton_persistent_autotuned_tgmm_kernel(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -119,7 +125,7 @@ def triton_autotuned_tgmm_kernel(
     GRID_DIM: tl.constexpr,
 ):
     # fmt: off
-    triton_tgmm_kernel_core(
+    triton_tgmm_persistent_kernel_core(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
@@ -138,8 +144,13 @@ def triton_autotuned_tgmm_kernel(
     # fmt: on
 
 
-def compute_grid(
-    K: int, N: int, G: int, block_size_k: int, block_size_n: int, grid_dim: int
+def compute_persistent_grid(
+    K: int,
+    N: int,
+    G: int,
+    block_size_k: int,
+    block_size_n: int,
+    grid_dim: int,
 ) -> tuple[int]:
     assert K > 0, f"K must be positive, it's {K}."
     assert N > 0, f"N must be positive, it's {N}."
@@ -162,7 +173,7 @@ def compute_grid(
     return (num_programs,)
 
 
-def triton_tgmm(
+def triton_persistent_tgmm(
     lhs: Tensor,
     rhs: Tensor,
     group_sizes: Tensor,
@@ -201,7 +212,7 @@ def triton_tgmm(
             trans_out=trans_out,
         )
 
-        grid = compute_grid(
+        grid = compute_persistent_grid(
             K,
             N,
             G,
@@ -211,7 +222,7 @@ def triton_tgmm(
         )
 
         # fmt: off
-        triton_tgmm_kernel[grid](
+        triton_tgmm_persistent_kernel[grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
@@ -230,12 +241,12 @@ def triton_tgmm(
     else:
         logging.debug("Running autotuned TGMM kernel.")
 
-        autotuned_grid = lambda META: compute_grid(
+        autotuned_grid = lambda META: compute_persistent_grid(
             K, N, G, META["BLOCK_SIZE_K"], META["BLOCK_SIZE_N"], META["GRID_DIM"]
         )
 
         # fmt: off
-        triton_autotuned_tgmm_kernel[autotuned_grid](
+        triton_persistent_autotuned_tgmm_kernel[autotuned_grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
@@ -246,3 +257,158 @@ def triton_tgmm(
         # fmt: on
 
     return out
+
+
+# Triton non-persistent TGMM implementation.
+# ------------------------------------------------------------------------------
+
+
+def tgmm_non_persistent_heuristics() -> dict[str, Callable[[dict[str, Any]], Any]]:
+    return {"BLOCK_SIZE_G": lambda META: triton.next_power_of_2(META["G"])}
+
+
+def tgmm_non_persistent_autotune_configs(
+    use_full_tuning_space: bool = False,
+) -> list[triton.Config]:
+    return (
+        full_tuning_space(add_grid_dim=False)
+        if use_full_tuning_space
+        else list(
+            {
+                triton.Config(
+                    {k: v for k, v in config.kwargs.items() if k != "GRID_DIM"},
+                    num_warps=config.num_warps,
+                    num_stages=config.num_stages,
+                )
+                for config in unique_triton_tgmm_configs()
+            }
+        )
+    )
+
+
+@triton.heuristics(tgmm_non_persistent_heuristics())
+@triton.jit
+@typing.no_type_check
+def triton_tgmm_non_persistent_kernel(
+    # Tensor pointers:
+    lhs_ptr,
+    rhs_ptr,
+    group_sizes_ptr,
+    out_ptr,
+    # Tensor shapes:
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_k: int,
+    stride_lhs_m: int,
+    stride_rhs_m: int,
+    stride_rhs_n: int,
+    stride_out_g: int,
+    stride_out_k: int,
+    stride_out_n: int,
+    # Meta-parameters:
+    BLOCK_SIZE_G: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+):
+    # fmt: off
+    triton_tgmm_non_persistent_kernel_core(
+        # Tensor pointers:
+        lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
+        # Tensor shapes:
+        M, K, N, G,
+        # Tensor strides:
+        stride_lhs_k, stride_lhs_m,
+        stride_rhs_m, stride_rhs_n,
+        stride_out_g, stride_out_k, stride_out_n,
+        # Meta-parameters:
+        BLOCK_SIZE_G=BLOCK_SIZE_G,
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+        GROUP_SIZE=GROUP_SIZE,
+    )
+    # fmt: on
+
+
+@triton.autotune(
+    configs=tgmm_non_persistent_autotune_configs(), key=["M", "K", "N", "G"]
+)
+@triton.heuristics(tgmm_non_persistent_heuristics())
+@triton.jit
+@typing.no_type_check
+def triton_tgmm_non_persistent_autotune_kernel(
+    # Tensor pointers:
+    lhs_ptr,
+    rhs_ptr,
+    group_sizes_ptr,
+    out_ptr,
+    # Tensor shapes:
+    M: int,
+    K: int,
+    N: int,
+    G: int,
+    # Tensor strides:
+    stride_lhs_k: int,
+    stride_lhs_m: int,
+    stride_rhs_m: int,
+    stride_rhs_n: int,
+    stride_out_g: int,
+    stride_out_k: int,
+    stride_out_n: int,
+    # Meta-parameters:
+    BLOCK_SIZE_G: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+):
+    # fmt: off
+    triton_tgmm_non_persistent_kernel_core(
+        # Tensor pointers:
+        lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
+        # Tensor shapes:
+        M, K, N, G,
+        # Tensor strides:
+        stride_lhs_k, stride_lhs_m,
+        stride_rhs_m, stride_rhs_n,
+        stride_out_g, stride_out_k, stride_out_n,
+        # Meta-parameters:
+        BLOCK_SIZE_G=BLOCK_SIZE_G,
+        BLOCK_SIZE_M=BLOCK_SIZE_M,
+        BLOCK_SIZE_K=BLOCK_SIZE_K,
+        BLOCK_SIZE_N=BLOCK_SIZE_N,
+        GROUP_SIZE=GROUP_SIZE,
+    )
+    # fmt: on
+
+
+def compute_non_persistent_grid(
+    K: int,
+    N: int,
+    G: int,
+    block_size_k: int,
+    block_size_n: int,
+) -> tuple[int, int]:
+    assert K > 0, f"K must be positive, it's {K}."
+    assert N > 0, f"N must be positive, it's {N}."
+    assert G > 0, f"G must be positive, it's {G}."
+    assert is_power_of_2(
+        block_size_k
+    ), f"K-dimension tile size must be a power of 2 (it's {block_size_k})."
+    assert is_power_of_2(
+        block_size_n
+    ), f"N-dimension tile size must be a power of 2 (it's {block_size_n})."
+    num_k_tiles = triton.cdiv(K, block_size_k)
+    assert num_k_tiles > 0, f"num_k_tiles must be positive, it's {num_k_tiles}."
+    num_n_tiles = triton.cdiv(N, block_size_n)
+    assert num_n_tiles > 0, f"num_n_tiles must be positive, it's {num_n_tiles}."
+    num_tiles_per_mm = num_k_tiles * num_n_tiles
+    assert (
+        num_tiles_per_mm > 0
+    ), f"num_tiles_per_mm must be positive, it's {num_tiles_per_mm}."
+    return (G, num_tiles_per_mm)
