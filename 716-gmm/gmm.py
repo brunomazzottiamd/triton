@@ -41,13 +41,16 @@ from gmm_common import gen_gmm_tensors
 from tgmm_common import gen_tgmm_tensors
 
 # Triton GMM implementation
-from triton_gmm import triton_gmm, gmm_autotune_configs, triton_autotuned_gmm_kernel
+from triton_gmm import triton_gmm, gmm_autotune_configs, triton_gmm_kernel_autotuned
 
 # Triton TGMM implementation (persistent only for now)
 from triton_tgmm import (
     triton_persistent_tgmm,
     tgmm_persistent_autotune_configs,
-    triton_persistent_autotuned_tgmm_kernel,
+    triton_tgmm_persistent_autotuned_kernel,
+    triton_non_persistent_tgmm,
+    tgmm_non_persistent_autotune_configs,
+    triton_tgmm_non_persistent_autotuned_kernel,
 )
 
 
@@ -88,23 +91,30 @@ AutotuneConfigsFn: TypeAlias = Callable[[bool], list[triton.Config]]
 def select_triton_kernel(
     gmm_type: str,
 ) -> tuple[str, GenTensorsFn, KernelFn, Any, AutotuneConfigsFn]:
-    assert gmm_type in {"gmm", "tgmm"}, "Invalid GMM type."
+    assert gmm_type in {"gmm", "ptgmm", "tgmm"}, "Invalid GMM type."
     if gmm_type == "gmm":
         return (
             "GMM",
             gen_gmm_tensors,
             triton_gmm,
-            triton_autotuned_gmm_kernel,
+            triton_gmm_kernel_autotuned,
             gmm_autotune_configs,
         )
-    # Persistent TGMM only for now.
-    if gmm_type == "tgmm":
+    if gmm_type == "ptgmm":
         return (
-            "TGMM",
+            "persistent TGMM",
             gen_tgmm_tensors,
             triton_persistent_tgmm,
-            triton_persistent_autotuned_tgmm_kernel,
+            triton_tgmm_persistent_autotuned_kernel,
             tgmm_persistent_autotune_configs,
+        )
+    if gmm_type == "tgmm":
+        return (
+            "non-persistent TGMM",
+            gen_tgmm_tensors,
+            triton_non_persistent_tgmm,
+            triton_tgmm_non_persistent_autotuned_kernel,
+            tgmm_non_persistent_autotune_configs,
         )
 
 
@@ -382,9 +392,9 @@ def parse_args() -> argparse.Namespace:
     # GMM type
     parser.add_argument(
         "--gmm-type",
-        choices={"gmm", "tgmm"},
+        choices={"gmm", "ptgmm", "tgmm"},
         default="gmm",
-        help="GMM variant to run, GMM or TGMM",
+        help="GMM variant to run: GMM, persistent TGMM, non-persistent TGMM",
     )
 
     # Data type

@@ -102,7 +102,7 @@ def triton_gmm_kernel(
 @triton.heuristics(gmm_heuristics())
 @triton.jit
 @typing.no_type_check
-def triton_autotuned_gmm_kernel(
+def triton_gmm_kernel_autotuned(
     # Tensor pointers:
     lhs_ptr,
     rhs_ptr,
@@ -252,7 +252,7 @@ def triton_gmm(
         )
 
         # fmt: off
-        triton_autotuned_gmm_kernel[autotuned_grid](
+        triton_gmm_kernel_autotuned[autotuned_grid](
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
