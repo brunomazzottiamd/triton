@@ -5,14 +5,15 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 
 function log() {
+    local timestamp
     timestamp=$(date +'%Y-%m-%d %H:%M:%S,%3N')
     echo "${timestamp} > ${*}"
 }
 
 
 function clean_triton_cache() {
-    triton_cache_dir="${HOME}/.triton/cache"
-    log 'Cleaning Triton cache to avoid filling up storage...'
+    local triton_cache_dir="${1:-${HOME}/.triton/cache}"
+    log "Cleaning Triton cache at [${triton_cache_dir}] to avoid filling up storage..."
     rm --recursive --force "${triton_cache_dir}"
 }
 
@@ -26,24 +27,28 @@ EOF
 
 
 function bench() {
-    shape="${1}"
+    local shape="${1}"
     read -r m k n g <<< "${shape}"
     shift
 
-    clean_triton_cache
+    local triton_cache_dir="${1}"
+    shift
 
-    python "${script_dir}/gmm.py" \
+    TRITON_CACHE_DIR="${triton_cache_dir}" python "${script_dir}/gmm.py" \
         "${m}" "${k}" "${n}" "${g}" \
         --bench --verbose --num-group-sizes 20 "${@}" 2>&1
+
+    clean_triton_cache "${triton_cache_dir}"
 }
 
 
 function bench_layouts() {
-    workload="${1}"
+    local workload="${1}"
 
-    shape="${2}"
+    local shape="${2}"
     read -r m k n g <<< "${shape}"
-    base_bench_log_file="${script_dir}/bench_${m}_${k}_${n}_${g}"
+
+    local base_bench_file="${script_dir}/bench_${m}_${k}_${n}_${g}"
 
     log "Benchmarking shape (M, K, N, G) = (${m}, ${k}, ${n}, ${g}) for ${workload} workload..."
 
@@ -57,16 +62,19 @@ function bench_layouts() {
 
     # TN: row-major x column-major => row-major
     log 'TN layout: inference + training'
-    bench "${shape}" | tee "${base_bench_log_file}_rcr.log"
+    local base_layout_file="${base_bench_file}_rcr"
+    bench "${shape}" "${base_layout_file}_cache" | tee "${base_layout_file}.log"
 
     if [ "${workload}" == 'training' ]; then
         # NN: column-major x column-major => row-major
         log 'NN layout: training'
-        bench "${shape}" --trans-lhs | tee "${base_bench_log_file}_ccr.log"
+        local base_layout_file="${base_bench_file}_ccr"
+        bench "${shape}" "${base_layout_file}_cache" --trans-lhs | tee "${base_layout_file}_ccr.log"
 
         # NT: column-major x row-major => row-major
         log 'NT layout: training'
-        bench "${shape}" --trans-lhs --no-trans-rhs | tee "${base_bench_log_file}_crr.log"
+        local base_layout_file="${base_bench_file}_crr"
+        bench "${shape}" "${base_layout_file}_cache" --trans-lhs --no-trans-rhs | tee "${base_layout_file}.log"
     fi
 }
 
@@ -75,6 +83,8 @@ function main() {
     workload="${1}"
 
     log 'BIG BENCHMARK STARTED!'
+
+    clean_triton_cache
 
     log 'Removing old benchmark log files...'
     rm --recursive --force "${script_dir}"/*.log
