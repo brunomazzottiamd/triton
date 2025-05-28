@@ -67,7 +67,7 @@ class Config:
     block_size_k: int = TILING[1]
     block_size_n: int = TILING[2]
     group_size: int = 1
-    grid_dim: int = num_sms()
+    grid_dim: int | None = num_sms()
     num_warps: int = 4
     num_stages: int = 1
 
@@ -84,9 +84,10 @@ class Config:
         assert (
             self.group_size > 0
         ), f"Group size must be positive (it's {self.group_size})."
-        assert (
-            self.grid_dim > 0
-        ), f"Grid dimension must be positive (it's {self.grid_dim})."
+        if self.grid_dim is not None:
+            assert (
+                self.grid_dim > 0
+            ), f"Grid dimension must be positive when given (it's {self.grid_dim})."
         assert (
             self.num_warps > 0
         ), f"Number of warps must be positive (it's {self.num_warps})."
@@ -124,10 +125,10 @@ BEST_GMM_CONFIGS: dict[ConfigKey, Config] = {
 # fmt: on
 
 
-# TGMM tuning database for gfx942.
+# Persistent TGMM tuning database for gfx942.
 # TODO: Perform tuning and update best configs!
 # fmt: off
-BEST_TGMM_CONFIGS: dict[ConfigKey, Config] = {
+BEST_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(),
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(),
@@ -146,6 +147,32 @@ BEST_TGMM_CONFIGS: dict[ConfigKey, Config] = {
     ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(),
     ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(),
     ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+}
+# fmt: on
+
+
+# Non-persistent TGMM tuning database for gfx942.
+# TODO: Perform tuning and update best configs!
+# fmt: off
+BEST_NON_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
+    # bf16 bf16 TN
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(grid_dim=None),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(grid_dim=None),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(grid_dim=None),
+    # bf16 bf16 NN
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(grid_dim=None),
+    # bf16 bf16 NT
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
 }
 # fmt: on
 
@@ -193,7 +220,14 @@ def _pick_best_config(
 
 
 pick_best_gmm_config = partial(_pick_best_config, "GMM", BEST_GMM_CONFIGS)
-pick_best_tgmm_config = partial(_pick_best_config, "TGMM", BEST_TGMM_CONFIGS)
+
+pick_best_persistent_tgmm_config = partial(
+    _pick_best_config, "persistent TGMM", BEST_PERSISTENT_TGMM_CONFIGS
+)
+
+pick_best_non_persistent_tgmm_config = partial(
+    _pick_best_config, "non-persistent TGMM", BEST_NON_PERSISTENT_TGMM_CONFIGS
+)
 
 
 # Get unique configurations from a given tuning database.
@@ -204,21 +238,36 @@ pick_best_tgmm_config = partial(_pick_best_config, "TGMM", BEST_TGMM_CONFIGS)
 def _unique_triton_configs(
     best_configs: dict[ConfigKey, Config],
 ) -> list[triton.Config]:
-    return [
+    configs = [
         triton.Config(
-            {
-                "BLOCK_SIZE_M": config.block_size_m,
-                "BLOCK_SIZE_K": config.block_size_k,
-                "BLOCK_SIZE_N": config.block_size_n,
-                "GROUP_SIZE": config.group_size,
-                "GRID_DIM": config.grid_dim,
-            },
+            (
+                {
+                    "BLOCK_SIZE_M": config.block_size_m,
+                    "BLOCK_SIZE_K": config.block_size_k,
+                    "BLOCK_SIZE_N": config.block_size_n,
+                    "GROUP_SIZE": config.group_size,
+                }
+                | {"GRID_DIM": config.grid_dim}
+                if config.grid_dim is not None
+                else {}
+            ),
             num_warps=config.num_warps,
             num_stages=config.num_stages,
         )
         for config in set(best_configs.values())
     ]
+    assert all("GRID_DIM" in config.kwargs for config in configs) or all(
+        "GRID_DIM" not in config.kwargs for config in configs
+    ), "All configs must have GRID_DIM or all configs must not have GRID_DIM."
+    return configs
 
 
 unique_triton_gmm_configs = partial(_unique_triton_configs, BEST_GMM_CONFIGS)
-unique_triton_tgmm_configs = partial(_unique_triton_configs, BEST_TGMM_CONFIGS)
+
+unique_triton_persistent_tgmm_configs = partial(
+    _unique_triton_configs, BEST_PERSISTENT_TGMM_CONFIGS
+)
+
+unique_triton_non_persistent_tgmm_configs = partial(
+    _unique_triton_configs, BEST_NON_PERSISTENT_TGMM_CONFIGS
+)
