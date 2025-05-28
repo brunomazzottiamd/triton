@@ -32,7 +32,12 @@ from triton_tgmm_kernel import (
 )
 
 # Tuning database
-from best_config import pick_best_tgmm_config, unique_triton_tgmm_configs
+from best_config import (
+    pick_best_persistent_tgmm_config,
+    pick_best_non_persistent_tgmm_config,
+    unique_triton_persistent_tgmm_configs,
+    unique_triton_non_persistent_tgmm_configs,
+)
 
 
 # Triton persistent TGMM implementation.
@@ -43,7 +48,9 @@ def tgmm_persistent_autotune_configs(
     use_full_tuning_space: bool = False,
 ) -> list[triton.Config]:
     return (
-        full_tuning_space() if use_full_tuning_space else unique_triton_tgmm_configs()
+        full_tuning_space()
+        if use_full_tuning_space
+        else unique_triton_persistent_tgmm_configs()
     )
 
 
@@ -199,7 +206,7 @@ def triton_persistent_tgmm(
     if not autotune:
         trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
 
-        best_config = pick_best_tgmm_config(
+        best_config = pick_best_persistent_tgmm_config(
             M,
             K,
             N,
@@ -212,6 +219,7 @@ def triton_persistent_tgmm(
             trans_out=trans_out,
         )
 
+        assert best_config.grid_dim is not None, "Unexpected absent grid dimension."
         grid = compute_persistent_grid(
             K,
             N,
@@ -278,16 +286,7 @@ def tgmm_non_persistent_autotune_configs(
     return (
         full_tuning_space(add_grid_dim=False)
         if use_full_tuning_space
-        else list(
-            {
-                triton.Config(
-                    {k: v for k, v in config.kwargs.items() if k != "GRID_DIM"},
-                    num_warps=config.num_warps,
-                    num_stages=config.num_stages,
-                )
-                for config in unique_triton_tgmm_configs()
-            }
-        )
+        else unique_triton_non_persistent_tgmm_configs()
     )
 
 
@@ -445,7 +444,7 @@ def triton_non_persistent_tgmm(
     if not autotune:
         trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
 
-        best_config = pick_best_tgmm_config(
+        best_config = pick_best_non_persistent_tgmm_config(
             M,
             K,
             N,

@@ -215,6 +215,7 @@ def triton_gmm(
             trans_out=trans_out,
         )
 
+        assert best_config.grid_dim is not None, "Unexpected absent grid dimension."
         grid = compute_grid(
             N,
             best_config.block_size_m,
