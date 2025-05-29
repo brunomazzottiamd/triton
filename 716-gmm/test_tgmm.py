@@ -19,7 +19,7 @@ from tgmm_common import gen_tgmm_tensors
 
 # TGMM implementations
 from torch_tgmm import torch_tgmm
-from triton_tgmm import triton_persistent_tgmm
+from triton_tgmm import triton_persistent_tgmm, triton_non_persistent_tgmm
 
 # Common test module
 from test_common import (
@@ -45,6 +45,7 @@ from test_common import (
 # ------------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("persistent_str", {"p", "np"})
 @pytest.mark.parametrize("M, K, N, G", TEST_SHAPES)
 @pytest.mark.parametrize("in_dtype_str", INPUT_DTYPES_STR)
 @pytest.mark.parametrize("out_dtype_str", OUTPUT_DTYPES_STR)
@@ -54,6 +55,7 @@ from test_common import (
 @pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
 def test_tgmm(
     quick_test: bool,
+    persistent_str: str,
     M: int,
     K: int,
     N: int,
@@ -65,6 +67,9 @@ def test_tgmm(
     trans_out_str: str,
     rng_seed_str: str,
 ):
+    assert persistent_str in {"p", "np"}
+    persistent: bool = persistent_str == "p"
+
     in_dtype = dtype_from_str(in_dtype_str)
     out_dtype = dtype_from_str(out_dtype_str)
     trans_lhs = trans_lhs_from_str(trans_lhs_str)
@@ -99,6 +104,10 @@ def test_tgmm(
     # only for this shape.
     atol = 2.5e-2 if M > 1e6 else None
 
+    kernel_wrapper = (
+        triton_persistent_tgmm if persistent else triton_non_persistent_tgmm
+    )
+
     for group_sizes in multiple_group_sizes:
         torch_tgmm(
             lhs,
@@ -109,7 +118,7 @@ def test_tgmm(
             existing_out=out_torch,
         )
 
-        triton_persistent_tgmm(
+        kernel_wrapper(
             lhs,
             rhs,
             group_sizes,
@@ -123,6 +132,6 @@ def test_tgmm(
         check_tensors(
             out_triton[non_empty_groups],
             out_torch[non_empty_groups],
-            "Triton TGMM doesn't match PyTorch reference TGMM.",
+            f"Triton {'persistent' if persistent else 'non-persistent'} TGMM doesn't match PyTorch reference TGMM.",
             atol=atol,
         )
