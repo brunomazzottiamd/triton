@@ -108,6 +108,11 @@ function main() {
         | sort \
         | uniq > "${script_dir}/best_configs.log"
 
+    log 'Compressing log files...'
+    pushd "${script_dir}" &> /dev/null || return
+    zip -q -9 bench_gmm_logs.zip ./*.log
+    popd &> /dev/null || return
+
     log 'BIG BENCHMARK ENDED!'
 }
 
