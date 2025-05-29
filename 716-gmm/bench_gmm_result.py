@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+
 # -*- coding: utf-8 -*-
 
 
@@ -166,14 +169,20 @@ def main() -> None:
 
     logging.basicConfig(format="%(asctime)s > %(message)s", level=logging.INFO)
 
-    bench_data: pd.DataFrame | None = get_bench_results(args.zip_file)
+    try:
+        bench_data: pd.DataFrame | None = get_bench_results(args.zip_file)
+    except Exception as error:
+        logging.error("Unexpected error: %s", error)
+        return
 
-    if bench_data is not None:
-        logging.info("Performance:")
-        print_markdown(bench_data[["M", "K", "N", "G", "Layout", "TFLOPS"]])
+    if bench_data is None:
+        return
 
-        logging.info("Best tuning configuration:")
-        print_markdown(bench_data.drop(columns=["TFLOPS"]))
+    logging.info("Performance:")
+    print_markdown(bench_data[["M", "K", "N", "G", "Layout", "TFLOPS"]])
+
+    logging.info("Best tuning configuration:")
+    print_markdown(bench_data.drop(columns=["TFLOPS"]))
 
 
 if __name__ == "__main__":
