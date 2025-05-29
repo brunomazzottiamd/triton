@@ -457,6 +457,7 @@ def triton_non_persistent_tgmm(
             trans_out=trans_out,
         )
 
+        assert best_config.grid_dim is None, "Unexpected existing grid dimension."
         grid = compute_non_persistent_grid(
             K,
             N,

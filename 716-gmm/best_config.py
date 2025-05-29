@@ -194,6 +194,7 @@ def _pick_best_config(
     trans_lhs: bool = TRANS_LHS,
     trans_rhs: bool = TRANS_RHS,
     trans_out: bool = TRANS_OUT,
+    default_grid_dim: int | None = num_sms(),
 ) -> Config:
     config_key = ConfigKey(
         M, K, N, G, input_type, output_type, trans_lhs, trans_rhs, trans_out
@@ -214,6 +215,7 @@ def _pick_best_config(
             block_size_m=block_size_m,
             block_size_k=block_size_k,
             block_size_n=block_size_n,
+            grid_dim=default_grid_dim,
         )
     logging.debug("Best %s config for %s is %s.", desc, config_key, best_config)
     return best_config
@@ -226,7 +228,10 @@ pick_best_persistent_tgmm_config = partial(
 )
 
 pick_best_non_persistent_tgmm_config = partial(
-    _pick_best_config, "non-persistent TGMM", BEST_NON_PERSISTENT_TGMM_CONFIGS
+    _pick_best_config,
+    "non-persistent TGMM",
+    BEST_NON_PERSISTENT_TGMM_CONFIGS,
+    default_grid_dim=None,
 )
 
 
@@ -247,9 +252,7 @@ def _unique_triton_configs(
                     "BLOCK_SIZE_N": config.block_size_n,
                     "GROUP_SIZE": config.group_size,
                 }
-                | {"GRID_DIM": config.grid_dim}
-                if config.grid_dim is not None
-                else {}
+                | ({"GRID_DIM": config.grid_dim} if config.grid_dim is not None else {})
             ),
             num_warps=config.num_warps,
             num_stages=config.num_stages,
