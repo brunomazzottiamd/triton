@@ -12,7 +12,7 @@ import triton
 import triton.language as tl
 
 # Common matrix multiplication tiling
-from triton_mm_tiling import tile_grid
+from triton_mm_tiling import remap_xcd_tile_grid
 
 
 # Triton GMM kernel.
@@ -106,7 +106,7 @@ def triton_gmm_kernel_core(
             tile_in_mm = tile - last_mm_tile
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-            tile_m, tile_n = tile_grid(
+            tile_m, tile_n = remap_xcd_tile_grid(
                 tile_in_mm, num_m_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
             )
 
