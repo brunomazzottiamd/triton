@@ -188,7 +188,12 @@ def benchmark_triton(
             p80_tflops,
         )
 
-        logging.info("      best_config = %s", str(kernel.best_config))
+        best_config = (
+            str(kernel.best_config)
+            .replace(", num_ctas: 1", "")
+            .replace(", maxnreg: None", "")
+        )
+        logging.info("      best_config = %s", best_config)
 
         return p50_tflops, p20_tflops, p80_tflops
 
