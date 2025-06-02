@@ -136,17 +136,31 @@ def triton_tgmm_persistent_kernel_core(
                 + offs_rhs_n[None, :] * stride_rhs_n
             )
 
+            loop_m = tl.cdiv(m, BLOCK_SIZE_M)
+            m_divisible_by_block_m = m % BLOCK_SIZE_M == 0
+            if not m_divisible_by_block_m:
+                loop_m -= 1
+
             acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
 
-            for mm in range(0, tl.cdiv(m, BLOCK_SIZE_M)):
-                m_mask_limit = m - mm * BLOCK_SIZE_M
-                lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m_mask_limit, other=0)
-                rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m_mask_limit, other=0)
-
+            for _ in range(0, loop_m):
+                lhs = tl.load(lhs_ptrs)
+                rhs = tl.load(rhs_ptrs)
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
-
                 lhs_ptrs += lhs_step
                 rhs_ptrs += rhs_step
+
+            if not m_divisible_by_block_m:
+                offs_lhs_k = (
+                    tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+                ) % K
+                offs_rhs_n = (
+                    tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+                ) % N
+                offs_m = loop_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+                lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m, other=0)
+                rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m, other=0)
+                acc += tl.dot(lhs, rhs, input_precision="ieee")
 
             acc = acc.to(out_ptr.type.element_ty)
 
@@ -297,17 +311,31 @@ def triton_tgmm_non_persistent_kernel_core(
             + offs_rhs_n[None, :] * stride_rhs_n
         )
 
+        loop_m = tl.cdiv(m, BLOCK_SIZE_M)
+        m_divisible_by_block_m = m % BLOCK_SIZE_M == 0
+        if not m_divisible_by_block_m:
+            loop_m -= 1
+
         acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
 
-        for mm in range(0, tl.cdiv(m, BLOCK_SIZE_M)):
-            m_mask_limit = m - mm * BLOCK_SIZE_M
-            lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m_mask_limit, other=0)
-            rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m_mask_limit, other=0)
-
+        for _ in range(0, loop_m):
+            lhs = tl.load(lhs_ptrs)
+            rhs = tl.load(rhs_ptrs)
             acc += tl.dot(lhs, rhs, input_precision="ieee")
-
             lhs_ptrs += lhs_step
             rhs_ptrs += rhs_step
+
+        if not m_divisible_by_block_m:
+            offs_lhs_k = (
+                tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+            ) % K
+            offs_rhs_n = (
+                tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            ) % N
+            offs_m = loop_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m, other=0)
+            rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m, other=0)
+            acc += tl.dot(lhs, rhs, input_precision="ieee")
 
         acc = acc.to(out_ptr.type.element_ty)
 
