@@ -69,7 +69,7 @@ function bench_layouts() {
         # NN: column-major x column-major => row-major
         log 'NN layout: training'
         local base_layout_file="${base_bench_file}_ccr"
-        bench "${shape}" "${base_layout_file}_cache" --trans-lhs | tee "${base_layout_file}_ccr.log"
+        bench "${shape}" "${base_layout_file}_cache" --trans-lhs | tee "${base_layout_file}.log"
 
         # NT: column-major x row-major => row-major
         log 'NT layout: training'
