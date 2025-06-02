@@ -11,6 +11,9 @@ import typing
 import triton
 import triton.language as tl
 
+# Common matrix multiplication tiling
+from triton_mm_tiling import tile_grid
+
 
 # Triton GMM kernel.
 # ------------------------------------------------------------------------------
@@ -103,23 +106,9 @@ def triton_gmm_kernel_core(
             tile_in_mm = tile - last_mm_tile
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-            if GROUP_SIZE == 1:
-                tile_m = tile_in_mm // num_n_tiles
-                tile_n = tile_in_mm % num_n_tiles
-            else:
-                # Re-order program ID for better L2 performance.
-                num_tiles_in_group = GROUP_SIZE * num_n_tiles
-                group_id = tile_in_mm // num_tiles_in_group
-                first_tile_m = group_id * GROUP_SIZE
-                group_size_m = min(num_m_tiles - first_tile_m, GROUP_SIZE)
-                tile_m = first_tile_m + (tile_in_mm % group_size_m)
-                tile_n = (tile_in_mm % num_tiles_in_group) // group_size_m
-
-            tl.device_assert(tile_m >= 0, "tile_m < 0")
-            tl.device_assert(tile_m < num_m_tiles, "tile_m >= num_m_tiles")
-
-            tl.device_assert(tile_n >= 0, "tile_n < 0")
-            tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
+            tile_m, tile_n = tile_grid(
+                tile_in_mm, num_m_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
+            )
 
             # Do regular MM:
 

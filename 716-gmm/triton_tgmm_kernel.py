@@ -11,6 +11,9 @@ import typing
 import triton
 import triton.language as tl
 
+# Common matrix multiplication tiling
+from triton_mm_tiling import tile_grid
+
 
 # Triton persistent TGMM kernel.
 # ------------------------------------------------------------------------------
@@ -100,23 +103,9 @@ def triton_tgmm_persistent_kernel_core(
             tile_in_mm = tile - last_mm_tile
             tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-            if GROUP_SIZE == 1:
-                tile_k = tile_in_mm // num_n_tiles
-                tile_n = tile_in_mm % num_n_tiles
-            else:
-                # Re-order program ID for better L2 performance.
-                num_tiles_in_group = GROUP_SIZE * num_n_tiles
-                group_id = tile_in_mm // num_tiles_in_group
-                first_tile_k = group_id * GROUP_SIZE
-                group_size_k = min(num_k_tiles - first_tile_k, GROUP_SIZE)
-                tile_k = first_tile_k + (tile_in_mm % group_size_k)
-                tile_n = (tile_in_mm % num_tiles_in_group) // group_size_k
-
-            tl.device_assert(tile_k >= 0, "tile_k < 0")
-            tl.device_assert(tile_k < num_k_tiles, "tile_k >= num_k_tiles")
-
-            tl.device_assert(tile_n >= 0, "tile_n < 0")
-            tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
+            tile_k, tile_n = tile_grid(
+                tile_in_mm, num_k_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
+            )
 
             # Do regular MM:
 
@@ -277,23 +266,9 @@ def triton_tgmm_non_persistent_kernel_core(
         tile_in_mm = tl.program_id(1)
         tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-        if GROUP_SIZE == 1:
-            tile_k = tile_in_mm // num_n_tiles
-            tile_n = tile_in_mm % num_n_tiles
-        else:
-            # Re-order program ID for better L2 performance.
-            num_tiles_in_group = GROUP_SIZE * num_n_tiles
-            group_id = tile_in_mm // num_tiles_in_group
-            first_tile_k = group_id * GROUP_SIZE
-            group_size_k = min(num_k_tiles - first_tile_k, GROUP_SIZE)
-            tile_k = first_tile_k + (tile_in_mm % group_size_k)
-            tile_n = (tile_in_mm % num_tiles_in_group) // group_size_k
-
-        tl.device_assert(tile_k >= 0, "tile_k < 0")
-        tl.device_assert(tile_k < num_k_tiles, "tile_k >= num_k_tiles")
-
-        tl.device_assert(tile_n >= 0, "tile_n < 0")
-        tl.device_assert(tile_n < num_n_tiles, "tile_n >= num_n_tiles")
+        tile_k, tile_n = tile_grid(
+            tile_in_mm, num_k_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
+        )
 
         tl.device_assert(tile_k * BLOCK_SIZE_K >= 0, "tile_k * BLOCK_SIZE_K < 0")
         tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
