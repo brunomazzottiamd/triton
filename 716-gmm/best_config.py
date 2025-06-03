@@ -156,23 +156,23 @@ BEST_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
 # fmt: off
 BEST_NON_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(grid_dim=None),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=256, group_size=1, num_warps=8, num_stages=2),
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(grid_dim=None),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(grid_dim=None),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(grid_dim=None),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(grid_dim=None, block_size_m=64, block_size_k= 64, block_size_n=256, group_size=1, num_warps=4, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
     # bf16 bf16 NN
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(grid_dim=None),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(grid_dim=None),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(grid_dim=None),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
     # bf16 bf16 NT
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=1, num_warps=8, num_stages=1),
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
 }
 # fmt: on
 
