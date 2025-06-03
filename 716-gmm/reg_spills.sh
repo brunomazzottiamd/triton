@@ -56,17 +56,17 @@ function reg_spills_layouts() {
 
 
 function csv_to_markdown() {
-    python << EOF
+    python -c "
 import sys
 import pandas as pd
 print(pd.read_csv(sys.stdin).to_markdown(index=False))
-EOF
+"
 }
 
 
 function main() {
     clean_triton_cache
-    reg_spills_layouts  # | csv_to_markdown
+    reg_spills_layouts | csv_to_markdown
 }
 
 
