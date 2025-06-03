@@ -182,7 +182,7 @@ def benchmark_triton(
         p80_tflops = round(tops_sum / p20_s_sum, 2)
 
         logging.info(
-            "      TFLOPS: p20 = %.2f, p50 = %.2f, p80 = %.2f",
+            "      TFLOPS: p20 = %6.2f, p50 = %6.2f, p80 = %6.2f",
             p20_tflops,
             p50_tflops,
             p80_tflops,

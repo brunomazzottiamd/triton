@@ -76,7 +76,7 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
         )
 
         tflops_pattern: re.Pattern = re.compile(
-            r"TFLOPS: p20 = (\d+\.\d{2}), p50 = (\d+\.\d{2}), p80 = (\d+\.\d{2})",
+            r"TFLOPS: p20 =\s*(\d+\.\d{2}), p50 =\s*(\d+\.\d{2}), p80 =\s*(\d+\.\d{2})",
             re.MULTILINE,
         )
 
