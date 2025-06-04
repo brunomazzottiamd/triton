@@ -6,6 +6,7 @@
 
 # Python standard library
 import argparse
+import itertools
 
 # Types module
 from dtypes import (
@@ -62,6 +63,31 @@ def add_trans_arg(
         )
 
 
+def layout_choices() -> set[str]:
+    row_col_layout_chars = {"r", "c"}
+    return {
+        f"{lhs}{rhs}{out}"
+        for lhs, rhs, out in itertools.product(
+            row_col_layout_chars, row_col_layout_chars, row_col_layout_chars
+        )
+    } | {"tn", "nn", "nt"}
+
+
+def trans_from_layout(layout: str) -> tuple[bool, bool, bool]:
+    assert layout in layout_choices(), "Invalid matrix multiplication layout."
+    try:
+        layout = {"tn": "rcr", "nn": "ccr", "nt": "crr"}[layout]
+    except KeyError:
+        pass
+    assert (
+        len(layout) == 3
+    ), "Row / column layout string must have exactly 3 characters."
+    assert all(
+        layout_char in {"r", "c"} for layout_char in layout
+    ), "All row / column layout characters must be 'r' or 'c'."
+    return tuple(layout_char == "c" for layout_char in layout)
+
+
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     shape_args = [args.M, args.K, args.N, args.G]
     all_none = all(arg is None for arg in shape_args)
@@ -84,6 +110,19 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
             None,
             "number of distinct group sizes must be 1 when --unif-group-sizes is used",
         )
+
+    if args.layout is not None:
+        # Validate layout and transposition combinations.
+        has_trans_args = (
+            args.trans_lhs != TRANS_LHS
+            or args.trans_rhs != TRANS_RHS
+            or args.trans_out != TRANS_OUT
+        )
+        if has_trans_args:
+            raise argparse.ArgumentError(
+                None, "transposition arguments aren't supported when --layout is used"
+            )
+        args.trans_lhs, args.trans_rhs, args.trans_out = trans_from_layout(args.layout)
 
     return args
 
@@ -119,10 +158,16 @@ def parse_args() -> argparse.Namespace:
         help=f"output data type (default: {DTYPE_STR})",
     )
 
-    # Transpose
+    # Transpose and layout
     add_trans_arg(parser, "lhs", TRANS_LHS)
     add_trans_arg(parser, "rhs", TRANS_RHS)
     add_trans_arg(parser, "out", TRANS_OUT)
+    parser.add_argument(
+        "--layout",
+        type=str.lower,
+        choices=layout_choices(),
+        help="matrix multiplication memory layout, should not be used together with transposition arguments",
+    )
 
     # Input generation
     parser.add_argument(
@@ -157,3 +202,7 @@ def parse_args() -> argparse.Namespace:
         parser.print_usage()
         print(f"{sys.argv[0]}: error: {arg_error}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    print(parse_args())

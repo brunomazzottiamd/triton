@@ -31,11 +31,14 @@ function bench() {
     read -r m k n g <<< "${shape}"
     shift
 
+    local layout="${1}"
+    shift
+
     local triton_cache_dir="${1}"
     shift
 
     TRITON_CACHE_DIR="${triton_cache_dir}" python "${script_dir}/gmm.py" \
-        "${m}" "${k}" "${n}" "${g}" \
+        "${m}" "${k}" "${n}" "${g}" --layout "${layout}" \
         --bench --verbose --num-group-sizes 20 "${@}" 2>&1
 
     clean_triton_cache "${triton_cache_dir}"
@@ -63,18 +66,18 @@ function bench_layouts() {
     # TN: row-major x column-major => row-major
     log 'TN layout: inference + training'
     local base_layout_file="${base_bench_file}_rcr"
-    bench "${shape}" "${base_layout_file}_cache" | tee "${base_layout_file}.log"
+    bench "${shape}" TN "${base_layout_file}_cache" | tee "${base_layout_file}.log"
 
     if [ "${workload}" == 'training' ]; then
         # NN: column-major x column-major => row-major
         log 'NN layout: training'
         local base_layout_file="${base_bench_file}_ccr"
-        bench "${shape}" "${base_layout_file}_cache" --trans-lhs | tee "${base_layout_file}.log"
+        bench "${shape}" NN "${base_layout_file}_cache" | tee "${base_layout_file}.log"
 
         # NT: column-major x row-major => row-major
         log 'NT layout: training'
         local base_layout_file="${base_bench_file}_crr"
-        bench "${shape}" "${base_layout_file}_cache" --trans-lhs --no-trans-rhs | tee "${base_layout_file}.log"
+        bench "${shape}" NT "${base_layout_file}_cache" | tee "${base_layout_file}.log"
     fi
 }
 
