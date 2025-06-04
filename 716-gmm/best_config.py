@@ -23,14 +23,13 @@ from common import (
     TRANS_LHS,
     TRANS_RHS,
     TRANS_OUT,
-    TILING,
     num_sms,
     is_power_of_2,
     get_tiling,
 )
 
 
-# Kernel configuration class.
+# Kernel configuration classes.
 # ------------------------------------------------------------------------------
 
 
@@ -63,13 +62,13 @@ class ConfigKey:
 
 @dataclass(frozen=True, eq=True)
 class Config:
-    block_size_m: int = TILING[0]
-    block_size_k: int = TILING[1]
-    block_size_n: int = TILING[2]
-    group_size: int = 1
+    block_size_m: int = 128
+    block_size_k: int = 128
+    block_size_n: int = 128
+    group_size: int = 6
     grid_dim: int | None = num_sms()
-    num_warps: int = 4
-    num_stages: int = 1
+    num_warps: int = 8
+    num_stages: int = 2
 
     def __post_init__(self):
         assert is_power_of_2(
@@ -94,6 +93,33 @@ class Config:
         assert (
             self.num_stages >= 0
         ), f"Number of software pipeliner stages must be non-negative (it's {self.num_stages})."
+
+
+# Default configurations.
+# ------------------------------------------------------------------------------
+
+
+OUTER_BLOCK_SIZE: int = 256
+INNER_BLOCK_SIZE: int = 64
+
+DEFAULT_GMM_CONFIG: Config = Config(
+    block_size_m=OUTER_BLOCK_SIZE,
+    block_size_k=INNER_BLOCK_SIZE,
+    block_size_n=OUTER_BLOCK_SIZE,
+)
+
+DEFAULT_PERSISTENT_TGMM_CONFIG: Config = Config(
+    block_size_m=INNER_BLOCK_SIZE,
+    block_size_k=OUTER_BLOCK_SIZE,
+    block_size_n=OUTER_BLOCK_SIZE,
+)
+
+DEFAULT_NON_PERSISTENT_TGMM_CONFIG: Config = Config(
+    block_size_m=INNER_BLOCK_SIZE,
+    block_size_k=OUTER_BLOCK_SIZE,
+    block_size_n=OUTER_BLOCK_SIZE,
+    grid_dim=None,
+)
 
 
 # Database of best kernel configurations.
@@ -131,22 +157,22 @@ BEST_GMM_CONFIGS: dict[ConfigKey, Config] = {
 BEST_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m=32, block_size_k=64, block_size_n=256, group_size=2, grid_dim=1216, num_warps=4, num_stages=2),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
     # bf16 bf16 NN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=2, grid_dim=912, num_warps=4, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): DEFAULT_PERSISTENT_TGMM_CONFIG,
     # bf16 bf16 NT
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=4, grid_dim=912, num_warps=4, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): DEFAULT_PERSISTENT_TGMM_CONFIG,
 }
 # fmt: on
 
@@ -157,19 +183,19 @@ BEST_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
 BEST_NON_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
     # bf16 bf16 TN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=256, group_size=1, num_warps=8, num_stages=2),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
     ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(grid_dim=None, block_size_m=64, block_size_k= 64, block_size_n=256, group_size=1, num_warps=4, num_stages=1),
     ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
     ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
     # bf16 bf16 NN
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
     ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
     ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
     ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
     # bf16 bf16 NT
     ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None),
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
     ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
     ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
     ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
@@ -184,6 +210,7 @@ BEST_NON_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
 def _pick_best_config(
     desc: str,
     best_configs: dict[ConfigKey, Config],
+    default_config: Config,
     M: int,
     K: int,
     N: int,
@@ -194,7 +221,6 @@ def _pick_best_config(
     trans_lhs: bool = TRANS_LHS,
     trans_rhs: bool = TRANS_RHS,
     trans_out: bool = TRANS_OUT,
-    default_grid_dim: int | None = num_sms(),
 ) -> Config:
     config_key = ConfigKey(
         M, K, N, G, input_type, output_type, trans_lhs, trans_rhs, trans_out
@@ -209,29 +235,45 @@ def _pick_best_config(
             config_key,
         )
         block_size_m, block_size_k, block_size_n = get_tiling(
-            M, K, N, TILING, group_sizes=group_sizes
+            M,
+            K,
+            N,
+            (
+                default_config.block_size_m,
+                default_config.block_size_k,
+                default_config.block_size_n,
+            ),
+            group_sizes=group_sizes,
         )
         best_config = Config(
             block_size_m=block_size_m,
             block_size_k=block_size_k,
             block_size_n=block_size_n,
-            grid_dim=default_grid_dim,
+            grid_dim=default_config.grid_dim,
         )
     logging.debug("Best %s config for %s is %s.", desc, config_key, best_config)
     return best_config
 
 
-pick_best_gmm_config = partial(_pick_best_config, "GMM", BEST_GMM_CONFIGS)
+pick_best_gmm_config = partial(
+    _pick_best_config,
+    "GMM",
+    BEST_GMM_CONFIGS,
+    DEFAULT_GMM_CONFIG,
+)
 
 pick_best_persistent_tgmm_config = partial(
-    _pick_best_config, "persistent TGMM", BEST_PERSISTENT_TGMM_CONFIGS
+    _pick_best_config,
+    "persistent TGMM",
+    BEST_PERSISTENT_TGMM_CONFIGS,
+    DEFAULT_PERSISTENT_TGMM_CONFIG,
 )
 
 pick_best_non_persistent_tgmm_config = partial(
     _pick_best_config,
     "non-persistent TGMM",
     BEST_NON_PERSISTENT_TGMM_CONFIGS,
-    default_grid_dim=None,
+    DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
 )
 
 
@@ -242,6 +284,7 @@ pick_best_non_persistent_tgmm_config = partial(
 
 def _unique_triton_configs(
     best_configs: dict[ConfigKey, Config],
+    default_config: Config,
 ) -> list[triton.Config]:
     configs = [
         triton.Config(
@@ -257,7 +300,7 @@ def _unique_triton_configs(
             num_warps=config.num_warps,
             num_stages=config.num_stages,
         )
-        for config in set(best_configs.values())
+        for config in set(best_configs.values()) | {default_config}
     ]
     assert all("GRID_DIM" in config.kwargs for config in configs) or all(
         "GRID_DIM" not in config.kwargs for config in configs
@@ -265,12 +308,20 @@ def _unique_triton_configs(
     return configs
 
 
-unique_triton_gmm_configs = partial(_unique_triton_configs, BEST_GMM_CONFIGS)
+unique_triton_gmm_configs = partial(
+    _unique_triton_configs,
+    BEST_GMM_CONFIGS,
+    DEFAULT_GMM_CONFIG,
+)
 
 unique_triton_persistent_tgmm_configs = partial(
-    _unique_triton_configs, BEST_PERSISTENT_TGMM_CONFIGS
+    _unique_triton_configs,
+    BEST_PERSISTENT_TGMM_CONFIGS,
+    DEFAULT_PERSISTENT_TGMM_CONFIG,
 )
 
 unique_triton_non_persistent_tgmm_configs = partial(
-    _unique_triton_configs, BEST_NON_PERSISTENT_TGMM_CONFIGS
+    _unique_triton_configs,
+    BEST_NON_PERSISTENT_TGMM_CONFIGS,
+    DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
 )

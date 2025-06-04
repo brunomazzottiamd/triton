@@ -29,19 +29,6 @@ RNG_SEED: int = 0
 NUM_GROUP_SIZES: int = 1
 
 
-# Defaut tiling.
-
-
-def is_power_of_2(x: int) -> bool:
-    return (x > 0) and (x & (x - 1) == 0)
-
-
-TILING: tuple[int, int, int] = (64, 64, 64)
-assert all(
-    is_power_of_2(tiling_dim) for tiling_dim in TILING
-), "Invalid default tiling."
-
-
 # Default transposition (TN).
 TRANS_LHS: bool = False
 TRANS_RHS: bool = True
@@ -73,6 +60,10 @@ def num_sms(device: torch.device | str = DEVICE) -> int:
 
 # Parameter checking functions.
 # ------------------------------------------------------------------------------
+
+
+def is_power_of_2(x: int) -> bool:
+    return (x > 0) and (x & (x - 1) == 0)
 
 
 def check_input_device_dtype(lhs: Tensor, rhs: Tensor, group_sizes: Tensor) -> None:
