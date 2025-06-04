@@ -73,7 +73,7 @@ def layout_choices() -> set[str]:
     } | {"tn", "nn", "nt"}
 
 
-def trans_from_layout(layout: str) -> tuple[bool, bool, bool]:
+def trans_from_layout(layout: str) -> tuple[bool, ...]:
     assert layout in layout_choices(), "Invalid matrix multiplication layout."
     try:
         layout = {"tn": "rcr", "nn": "ccr", "nt": "crr"}[layout]
