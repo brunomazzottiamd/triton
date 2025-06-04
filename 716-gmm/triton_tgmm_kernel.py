@@ -255,105 +255,103 @@ def triton_tgmm_non_persistent_kernel_core(
     tl.device_assert(m >= 0, "m < 0")
 
     # Skip empty groups.
-    if m > 0:
-        # Compute sum(group_sizes) until current group g.
-        # It's the starting column of lhs and starting row of rhs.
-        offs_g = tl.arange(0, BLOCK_SIZE_G)
-        group_sizes = tl.load(group_sizes_ptr + offs_g, mask=offs_g < g, other=0)
-        start_m = tl.sum(group_sizes)
+    if m == 0:
+        return
 
-        num_k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
-        tl.device_assert(num_k_tiles > 0, "num_k_tiles <= 0")
+    # Compute sum(group_sizes) until current group g.
+    # It's the starting column of lhs and starting row of rhs.
+    offs_g = tl.arange(0, BLOCK_SIZE_G)
+    group_sizes = tl.load(group_sizes_ptr + offs_g, mask=offs_g < g, other=0)
+    start_m = tl.sum(group_sizes)
 
-        num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
-        tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
+    num_k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
+    tl.device_assert(num_k_tiles > 0, "num_k_tiles <= 0")
 
-        # stride_lhs_m = 1 when lhs is row-major
-        lhs_step = BLOCK_SIZE_M * stride_lhs_m
-        tl.device_assert(lhs_step > 0, "lhs_step <= 0")
+    num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
+    tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-        # stride_rhs_m = 1 when rhs is column-major
-        rhs_step = BLOCK_SIZE_M * stride_rhs_m
-        tl.device_assert(rhs_step > 0, "rhs_step <= 0")
+    # stride_lhs_m = 1 when lhs is row-major
+    lhs_step = BLOCK_SIZE_M * stride_lhs_m
+    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-        # Get MM tile from grid.
-        tile_in_mm = tl.program_id(1)
-        tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
+    # stride_rhs_m = 1 when rhs is column-major
+    rhs_step = BLOCK_SIZE_M * stride_rhs_m
+    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
-        tile_k, tile_n = remap_xcd_tile_grid(
-            tile_in_mm, num_k_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
-        )
+    # Get MM tile from grid.
+    tile_in_mm = tl.program_id(1)
+    tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
 
-        tl.device_assert(tile_k * BLOCK_SIZE_K >= 0, "tile_k * BLOCK_SIZE_K < 0")
-        tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
+    tile_k, tile_n = remap_xcd_tile_grid(
+        tile_in_mm, num_k_tiles, num_n_tiles, GROUP_SIZE=GROUP_SIZE
+    )
 
+    tl.device_assert(tile_k * BLOCK_SIZE_K >= 0, "tile_k * BLOCK_SIZE_K < 0")
+    tl.device_assert(tile_n * BLOCK_SIZE_N >= 0, "tile_n * BLOCK_SIZE_N < 0")
+
+    offs_lhs_k = (tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)) % K
+    offs_rhs_n = (tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+    offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+
+    # stride_lhs_k = 1 when lhs is column-major
+    # stride_lhs_m = 1 when lhs is row-major
+    lhs_ptrs = (
+        lhs_ptr
+        + offs_lhs_k[:, None] * stride_lhs_k
+        + (start_m + offs_m[None, :]) * stride_lhs_m
+    )
+
+    # stride_rhs_m = 1 when rhs is column-major
+    # stride_rhs_n = 1 when rhs is row-major
+    rhs_ptrs = (
+        rhs_ptr
+        + (start_m + offs_m[:, None]) * stride_rhs_m
+        + offs_rhs_n[None, :] * stride_rhs_n
+    )
+
+    loop_m = tl.cdiv(m, BLOCK_SIZE_M)
+    m_divisible_by_block_m = m % BLOCK_SIZE_M == 0
+    if not m_divisible_by_block_m:
+        loop_m -= 1
+
+    acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
+
+    for _ in range(0, loop_m):
+        lhs = tl.load(lhs_ptrs)
+        rhs = tl.load(rhs_ptrs)
+        acc += tl.dot(lhs, rhs, input_precision="ieee")
+        lhs_ptrs += lhs_step
+        rhs_ptrs += rhs_step
+
+    if not m_divisible_by_block_m:
         offs_lhs_k = (
             tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
         ) % K
         offs_rhs_n = (
             tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
         ) % N
-        offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+        offs_m = loop_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+        lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m, other=0)
+        rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m, other=0)
+        acc += tl.dot(lhs, rhs, input_precision="ieee")
 
-        # stride_lhs_k = 1 when lhs is column-major
-        # stride_lhs_m = 1 when lhs is row-major
-        lhs_ptrs = (
-            lhs_ptr
-            + offs_lhs_k[:, None] * stride_lhs_k
-            + (start_m + offs_m[None, :]) * stride_lhs_m
-        )
+    acc = acc.to(out_ptr.type.element_ty)
 
-        # stride_rhs_m = 1 when rhs is column-major
-        # stride_rhs_n = 1 when rhs is row-major
-        rhs_ptrs = (
-            rhs_ptr
-            + (start_m + offs_m[:, None]) * stride_rhs_m
-            + offs_rhs_n[None, :] * stride_rhs_n
-        )
+    offs_out_k = tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+    offs_out_n = tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
 
-        loop_m = tl.cdiv(m, BLOCK_SIZE_M)
-        m_divisible_by_block_m = m % BLOCK_SIZE_M == 0
-        if not m_divisible_by_block_m:
-            loop_m -= 1
+    # stride_out_g is always K * N
+    # stride_out_k = 1 when out is column-major
+    # stride_out_n = 1 when out is row-major
+    out_ptrs = (
+        out_ptr
+        + g.to(tl.int64) * stride_out_g
+        + offs_out_k[:, None] * stride_out_k
+        + offs_out_n[None, :] * stride_out_n
+    )
 
-        acc = tl.zeros((BLOCK_SIZE_K, BLOCK_SIZE_N), dtype=tl.float32)
-
-        for _ in range(0, loop_m):
-            lhs = tl.load(lhs_ptrs)
-            rhs = tl.load(rhs_ptrs)
-            acc += tl.dot(lhs, rhs, input_precision="ieee")
-            lhs_ptrs += lhs_step
-            rhs_ptrs += rhs_step
-
-        if not m_divisible_by_block_m:
-            offs_lhs_k = (
-                tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
-            ) % K
-            offs_rhs_n = (
-                tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            ) % N
-            offs_m = loop_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-            lhs = tl.load(lhs_ptrs, mask=offs_m[None, :] < m, other=0)
-            rhs = tl.load(rhs_ptrs, mask=offs_m[:, None] < m, other=0)
-            acc += tl.dot(lhs, rhs, input_precision="ieee")
-
-        acc = acc.to(out_ptr.type.element_ty)
-
-        offs_out_k = tile_k.to(tl.int64) * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
-        offs_out_n = tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-
-        # stride_out_g is always K * N
-        # stride_out_k = 1 when out is column-major
-        # stride_out_n = 1 when out is row-major
-        out_ptrs = (
-            out_ptr
-            + g.to(tl.int64) * stride_out_g
-            + offs_out_k[:, None] * stride_out_k
-            + offs_out_n[None, :] * stride_out_n
-        )
-
-        tl.store(
-            out_ptrs,
-            acc,
-            mask=(offs_out_k[:, None] < K) & (offs_out_n[None, :] < N),
-        )
+    tl.store(
+        out_ptrs,
+        acc,
+        mask=(offs_out_k[:, None] < K) & (offs_out_n[None, :] < N),
+    )
