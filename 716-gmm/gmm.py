@@ -115,6 +115,9 @@ def benchmark_triton(
     in_dtype_str = str_from_dtype(in_dtype)
     out_dtype_str = str_from_dtype(out_dtype)
     dtypes_desc = f"i{in_dtype_str}_o{out_dtype_str}"
+    layout_desc = "".join(
+        "c" if trans else "r" for trans in (trans_lhs, trans_rhs, trans_out)
+    )
     triton_provider = f"triton_{dtypes_desc}"
 
     @triton.testing.perf_report(
@@ -124,7 +127,7 @@ def benchmark_triton(
             line_arg="provider",
             line_vals=[triton_provider],
             line_names=[triton_provider],
-            plot_name=f"triton_{gmm_type}_perf_{dtypes_desc}",
+            plot_name=f"triton_{gmm_type}_perf_{dtypes_desc}_{layout_desc}",
             args={},
             ylabel="TFLOPS",
         )
