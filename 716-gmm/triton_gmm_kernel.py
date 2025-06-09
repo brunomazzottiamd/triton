@@ -28,10 +28,10 @@ def triton_gmm_kernel_core(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: tl.constexpr,
-    K: tl.constexpr,
-    N: tl.constexpr,
-    G: tl.constexpr,
+    M: int,
+    K: int,
+    N: int,
+    G: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -40,19 +40,19 @@ def triton_gmm_kernel_core(
     GROUP_SIZE: tl.constexpr,
     GRID_DIM: tl.constexpr,
 ):
-    # tl.assume(M > 0)
-    # tl.assume(K > 0)
-    # tl.assume(N > 0)
-    # tl.assume(G > 0)
+    tl.assume(M > 0)
+    tl.assume(K > 0)
+    tl.assume(N > 0)
+    tl.assume(G > 0)
 
-    num_n_tiles: tl.constexpr = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
-    # tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
+    num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
+    tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-    lhs_step: tl.constexpr = BLOCK_SIZE_K
-    # tl.device_assert(lhs_step > 0, "lhs_step <= 0")
+    lhs_step = BLOCK_SIZE_K
+    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-    rhs_step: tl.constexpr = BLOCK_SIZE_K * N
-    # tl.device_assert(rhs_step > 0, "rhs_step <= 0")
+    rhs_step = BLOCK_SIZE_K * N
+    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
