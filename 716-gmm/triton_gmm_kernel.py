@@ -34,14 +34,13 @@ def triton_gmm_kernel_core(
     G: int,
     # Tensor leading dimensions:
     ld_lhs: int,
+    ld_rhs: int,
     # Tensor strides:
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
     stride_out_m: int,
     stride_out_n: int,
     # Meta-parameters:
     TRANS_LHS: tl.constexpr,
+    TRANS_RHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -55,10 +54,8 @@ def triton_gmm_kernel_core(
     tl.assume(G > 0)
 
     tl.assume(ld_lhs > 0)
+    tl.assume(ld_rhs > 0)
 
-    tl.assume(stride_rhs_g > 0)
-    tl.assume(stride_rhs_k > 0)
-    tl.assume(stride_rhs_n > 0)
     tl.assume(stride_out_m > 0)
     tl.assume(stride_out_n > 0)
 
@@ -72,8 +69,11 @@ def triton_gmm_kernel_core(
         lhs_step = BLOCK_SIZE_K
     tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-    # stride_rhs_k = 1 when rhs is column-major
-    rhs_step = BLOCK_SIZE_K * stride_rhs_k
+    if TRANS_RHS:
+        # stride_rhs_k = 1 when rhs is column-major
+        rhs_step = BLOCK_SIZE_K
+    else:
+        rhs_step = BLOCK_SIZE_K * ld_rhs
     tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
@@ -139,14 +139,22 @@ def triton_gmm_kernel_core(
                 )
 
             # stride_rhs_g is always K * N
-            # stride_rhs_k = 1 when rhs is column-major
-            # stride_rhs_n = 1 when rhs is row-major
-            rhs_ptrs = (
-                rhs_ptr
-                + g.to(tl.int64) * stride_rhs_g
-                + offs_k[:, None] * stride_rhs_k
-                + offs_rhs_n[None, :] * stride_rhs_n
-            )
+            if TRANS_RHS:
+                # stride_rhs_k = 1 when rhs is column-major
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None]
+                    + offs_rhs_n[None, :] * ld_rhs
+                )
+            else:
+                # stride_rhs_n = 1 when rhs is row-major
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None] * ld_rhs
+                    + offs_rhs_n[None, :]
+                )
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
