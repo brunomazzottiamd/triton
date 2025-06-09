@@ -67,14 +67,6 @@ def triton_tgmm_persistent_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_k: int,
-    stride_lhs_m: int,
-    stride_rhs_m: int,
-    stride_rhs_n: int,
-    stride_out_g: int,
-    stride_out_k: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -88,10 +80,6 @@ def triton_tgmm_persistent_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_k, stride_lhs_m,
-        stride_rhs_m, stride_rhs_n,
-        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -116,14 +104,6 @@ def triton_tgmm_persistent_autotuned_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_k: int,
-    stride_lhs_m: int,
-    stride_rhs_m: int,
-    stride_rhs_n: int,
-    stride_out_g: int,
-    stride_out_k: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -137,10 +117,6 @@ def triton_tgmm_persistent_autotuned_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_k, stride_lhs_m,
-        stride_rhs_m, stride_rhs_n,
-        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -228,8 +204,6 @@ def triton_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
             # Meta-parameters:
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
@@ -257,8 +231,6 @@ def triton_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
         )
         # fmt: on
 
@@ -297,14 +269,6 @@ def triton_tgmm_non_persistent_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_k: int,
-    stride_lhs_m: int,
-    stride_rhs_m: int,
-    stride_rhs_n: int,
-    stride_out_g: int,
-    stride_out_k: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_G: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
@@ -318,10 +282,6 @@ def triton_tgmm_non_persistent_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_k, stride_lhs_m,
-        stride_rhs_m, stride_rhs_n,
-        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_G=BLOCK_SIZE_G,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
@@ -349,14 +309,6 @@ def triton_tgmm_non_persistent_autotuned_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_k: int,
-    stride_lhs_m: int,
-    stride_rhs_m: int,
-    stride_rhs_n: int,
-    stride_out_g: int,
-    stride_out_k: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_G: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
@@ -370,10 +322,6 @@ def triton_tgmm_non_persistent_autotuned_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_k, stride_lhs_m,
-        stride_rhs_m, stride_rhs_n,
-        stride_out_g, stride_out_k, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_G=BLOCK_SIZE_G,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
@@ -458,8 +406,6 @@ def triton_non_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
             # Meta-parameters:
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
@@ -485,8 +431,6 @@ def triton_non_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
         )
         # fmt: on
 
