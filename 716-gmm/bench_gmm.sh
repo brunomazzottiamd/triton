@@ -35,6 +35,7 @@ function bench() {
     shift
 
     TRITON_CACHE_DIR="${triton_cache_dir}" python "${script_dir}/gmm.py" \
+	--gmm-type gmm \
         "${m}" "${k}" "${n}" "${g}" \
         --bench --verbose --num-group-sizes 20 "${@}" 2>&1
 
@@ -88,6 +89,8 @@ function main() {
     pushd "${script_dir}" &> /dev/null || return
     zip -q -9 bench_gmm_logs.zip ./*.log
     popd &> /dev/null || return
+
+    python "${script_dir}/bench_gmm_result.py" "${script_dir}/bench_gmm_logs.zip"
 
     log 'BIG BENCHMARK ENDED!'
 }
