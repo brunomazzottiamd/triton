@@ -31,9 +31,6 @@ function bench() {
     read -r m k n g <<< "${shape}"
     shift
 
-    local layout="${1}"
-    shift
-
     local triton_cache_dir="${1}"
     shift
 
@@ -56,7 +53,7 @@ function bench_layouts() {
     # Only supported layout:
     # * NN: row-major x row-major = row-major
     local base_layout_file="${base_bench_file}_rrr"
-    bench "${shape}" NN "${base_layout_file}_cache" | tee "${base_layout_file}.log"
+    bench "${shape}" "${base_layout_file}_cache" | tee "${base_layout_file}.log"
 }
 
 
