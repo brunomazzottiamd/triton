@@ -57,10 +57,10 @@ def triton_gmm_kernel(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: int,
-    K: int,
-    N: int,
-    G: int,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    G: tl.constexpr,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -74,7 +74,7 @@ def triton_gmm_kernel(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
-        M, K, N, G,
+        M=M, K=K, N=N, G=G,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -97,10 +97,10 @@ def triton_gmm_kernel_autotuned(
     group_sizes_ptr,
     out_ptr,
     # Tensor shapes:
-    M: int,
-    K: int,
-    N: int,
-    G: int,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    G: tl.constexpr,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -114,7 +114,7 @@ def triton_gmm_kernel_autotuned(
         # Tensor pointers:
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
-        M, K, N, G,
+        M=M, K=K, N=N, G=G,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -198,7 +198,7 @@ def triton_gmm(
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
-            M, K, N, G,
+            M=M, K=K, N=N, G=G,
             # Meta-parameters:
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
@@ -224,7 +224,7 @@ def triton_gmm(
             # Tensor pointers:
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
-            M, K, N, G,
+            M=M, K=K, N=N, G=G,
         )
         # fmt: on
 
