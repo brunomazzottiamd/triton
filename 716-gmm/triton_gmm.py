@@ -61,9 +61,9 @@ def triton_gmm_kernel(
     K: int,
     N: int,
     G: int,
+    # Tensor leading dimensions:
+    ld_lhs: int,
     # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
     stride_rhs_g: int,
     stride_rhs_k: int,
     stride_rhs_n: int,
@@ -84,8 +84,9 @@ def triton_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
+        # Tensor leading dimensions:
+        ld_lhs,
         # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
         stride_rhs_g, stride_rhs_k, stride_rhs_n,
         stride_out_m, stride_out_n,
         # Meta-parameters:
@@ -115,9 +116,9 @@ def triton_gmm_kernel_autotuned(
     K: int,
     N: int,
     G: int,
+    # Tensor leading dimensions:
+    ld_lhs: int,
     # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
     stride_rhs_g: int,
     stride_rhs_k: int,
     stride_rhs_n: int,
@@ -138,8 +139,9 @@ def triton_gmm_kernel_autotuned(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
+        # Tensor leading dimensions:
+        ld_lhs,
         # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
         stride_rhs_g, stride_rhs_k, stride_rhs_n,
         stride_out_m, stride_out_n,
         # Meta-parameters:
@@ -203,7 +205,7 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
-    trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
+    trans_lhs, trans_rhs, trans_out, ld_lhs, _, _ = get_gmm_transposition(lhs, rhs, out)
 
     if not autotune:
         best_config = pick_best_gmm_config(
@@ -234,8 +236,10 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
+            # Tensor leading dimensions:
+            ld_lhs,
             # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
+            *rhs.stride(), *out.stride(),
             # Meta-parameters:
             TRANS_LHS=trans_lhs,
             BLOCK_SIZE_M=best_config.block_size_m,
@@ -263,8 +267,10 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
+            # Tensor leading dimensions:
+            ld_lhs,
             # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
+            *rhs.stride(), *out.stride(),
             # Meta-parameters:
             TRANS_LHS=trans_lhs,
         )
