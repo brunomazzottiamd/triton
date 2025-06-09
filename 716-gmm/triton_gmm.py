@@ -61,14 +61,6 @@ def triton_gmm_kernel(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -83,10 +75,6 @@ def triton_gmm_kernel(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -113,14 +101,6 @@ def triton_gmm_kernel_autotuned(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -135,10 +115,6 @@ def triton_gmm_kernel_autotuned(
         lhs_ptr, rhs_ptr, group_sizes_ptr, out_ptr,
         # Tensor shapes:
         M, K, N, G,
-        # Tensor strides:
-        stride_lhs_m, stride_lhs_k,
-        stride_rhs_g, stride_rhs_k, stride_rhs_n,
-        stride_out_m, stride_out_n,
         # Meta-parameters:
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -223,8 +199,6 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
             # Meta-parameters:
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
@@ -251,8 +225,6 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
-            # Tensor strides:
-            *lhs.stride(), *rhs.stride(), *out.stride(),
         )
         # fmt: on
 

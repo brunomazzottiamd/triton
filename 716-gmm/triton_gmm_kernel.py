@@ -32,14 +32,6 @@ def triton_gmm_kernel_core(
     K: int,
     N: int,
     G: int,
-    # Tensor strides:
-    stride_lhs_m: int,
-    stride_lhs_k: int,
-    stride_rhs_g: int,
-    stride_rhs_k: int,
-    stride_rhs_n: int,
-    stride_out_m: int,
-    stride_out_n: int,
     # Meta-parameters:
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -53,23 +45,13 @@ def triton_gmm_kernel_core(
     tl.assume(N > 0)
     tl.assume(G > 0)
 
-    tl.assume(stride_lhs_m > 0)
-    tl.assume(stride_lhs_k > 0)
-    tl.assume(stride_rhs_g > 0)
-    tl.assume(stride_rhs_k > 0)
-    tl.assume(stride_rhs_n > 0)
-    tl.assume(stride_out_m > 0)
-    tl.assume(stride_out_n > 0)
-
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-    # stride_lhs_k = 1 when lhs is row-major
-    lhs_step = BLOCK_SIZE_K * stride_lhs_k
+    lhs_step = BLOCK_SIZE_K
     tl.device_assert(lhs_step > 0, "lhs_step <= 0")
 
-    # stride_rhs_k = 1 when rhs is column-major
-    rhs_step = BLOCK_SIZE_K * stride_rhs_k
+    rhs_step = BLOCK_SIZE_K * N
     tl.device_assert(rhs_step > 0, "rhs_step <= 0")
 
     # Current tile. Each program computes multiple tiles of each group.
@@ -123,22 +105,13 @@ def triton_gmm_kernel_core(
             ) % N
             offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
 
-            # stride_lhs_m = 1 when lhs is column-major
-            # stride_lhs_k = 1 when lhs is row-major
-            lhs_ptrs = (
-                lhs_ptr
-                + (last_m + offs_lhs_m[:, None]) * stride_lhs_m
-                + offs_k[None, :] * stride_lhs_k
-            )
+            lhs_ptrs = lhs_ptr + (last_m + offs_lhs_m[:, None]) * K + offs_k[None, :]
 
-            # stride_rhs_g is always K * N
-            # stride_rhs_k = 1 when rhs is column-major
-            # stride_rhs_n = 1 when rhs is row-major
             rhs_ptrs = (
                 rhs_ptr
-                + g.to(tl.int64) * stride_rhs_g
-                + offs_k[:, None] * stride_rhs_k
-                + offs_rhs_n[None, :] * stride_rhs_n
+                + g.to(tl.int64) * K * N
+                + offs_k[:, None] * N
+                + offs_rhs_n[None, :]
             )
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
@@ -166,12 +139,8 @@ def triton_gmm_kernel_core(
             offs_out_m = tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_out_n = tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
 
-            # stride_out_m = 1 when out is column-major
-            # stride_out_n = 1 when out is row-major
             out_ptrs = (
-                out_ptr
-                + (last_m + offs_out_m[:, None]) * stride_out_m
-                + offs_out_n[None, :] * stride_out_n
+                out_ptr + (last_m + offs_out_m[:, None]) * N + offs_out_n[None, :]
             )
 
             tl.store(
