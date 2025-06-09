@@ -21,8 +21,8 @@ import triton.language as tl
 from dtypes import DTYPE
 
 # Common module
-from common import TRANS_OUT, is_power_of_2, check_input_device_dtype
-from gmm_common import get_gmm_shape, get_gmm_output, get_gmm_transposition
+from common import is_power_of_2, check_input_device_dtype
+from gmm_common import get_gmm_shape, get_gmm_output
 from triton_common import full_tuning_space
 
 # GMM kernel
@@ -182,7 +182,6 @@ def triton_gmm(
     rhs: Tensor,
     group_sizes: Tensor,
     preferred_element_type: torch.dtype = DTYPE,
-    trans_out: bool = TRANS_OUT,
     existing_out: Tensor | None = None,
     autotune: bool = False,
 ) -> Tensor:
@@ -195,13 +194,10 @@ def triton_gmm(
         N,
         device=lhs.device,
         preferred_element_type=preferred_element_type,
-        trans=trans_out,
         existing_out=existing_out,
     )
 
     if not autotune:
-        trans_lhs, trans_rhs, trans_out, _, _, _ = get_gmm_transposition(lhs, rhs, out)
-
         best_config = pick_best_gmm_config(
             M,
             K,
@@ -210,9 +206,6 @@ def triton_gmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
-            trans_lhs=trans_lhs,
-            trans_rhs=trans_rhs,
-            trans_out=trans_out,
         )
 
         assert best_config.grid_dim is not None, "Unexpected absent grid dimension."

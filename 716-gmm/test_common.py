@@ -5,9 +5,6 @@
 # ------------------------------------------------------------------------------
 
 
-# Python standard library
-from functools import partial
-
 # PyTorch
 import torch
 from torch import Tensor
@@ -46,23 +43,6 @@ INPUT_DTYPES_STR: set[str] = {"i" + dtype_str for dtype_str in SUPPORTED_DTYPES_
 OUTPUT_DTYPES_STR: set[str] = {"o" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
 
 
-# Transpositions.
-
-TRANS_LSH_STR: set[str] = {f"tlhs{b}" for b in {"F", "T"}}
-TRANS_RHS_STR: set[str] = {f"trhs{b}" for b in {"F", "T"}}
-TRANS_OUT_STR: set[str] = {f"tout{b}" for b in {"F", "T"}}
-
-
-def trans_from_str(trans_str: str, tensor_str: str) -> bool:
-    assert tensor_str in {"lhs", "rhs", "out"}, f"Invalid tensor string ({tensor_str})."
-    return trans_str.replace(f"t{tensor_str}", "") == "T"
-
-
-trans_lhs_from_str = partial(trans_from_str, tensor_str="lhs")
-trans_rhs_from_str = partial(trans_from_str, tensor_str="rhs")
-trans_out_from_str = partial(trans_from_str, tensor_str="out")
-
-
 # RNG seed.
 
 RNG_SEED_STR: set[str] = {f"rng{rng_seed}" for rng_seed in {77, 121}}
@@ -81,9 +61,6 @@ def skip(
     quick_test: bool,
     in_dtype: torch.dtype,
     out_dtype: torch.dtype,
-    trans_lhs: bool,
-    trans_rhs: bool,
-    trans_out: bool,
 ) -> None:
     if not quick_test:
         return
@@ -91,10 +68,6 @@ def skip(
         in_dtype == torch.bfloat16 and out_dtype == torch.float16
     ):
         pytest.skip("Skipping mixed fp16 / bf16 types to speed up test execution.")
-    if trans_out:
-        pytest.skip("Skipping transposed output matrix to speed up test execution.")
-    if (trans_lhs, trans_rhs) not in {(False, True), (True, False), (True, True)}:
-        pytest.skip("Skipping non-{TN,NT,NN} layouts speed up test execution.")
 
 
 # Generation of group sizes.

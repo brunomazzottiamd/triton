@@ -29,12 +29,6 @@ RNG_SEED: int = 0
 NUM_GROUP_SIZES: int = 1
 
 
-# Default transposition (TN).
-TRANS_LHS: bool = False
-TRANS_RHS: bool = True
-TRANS_OUT: bool = False
-
-
 # Real shapes, used by real models.
 # fmt: off
 REAL_SHAPES: list[tuple[int, int, int, int]] = [

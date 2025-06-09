@@ -29,7 +29,7 @@ function reg_spills() {
     clean_triton_cache
 
     python "${script_dir}/gmm.py" \
-        "${m}" "${k}" "${n}" "${g}" --layout "${layout}" --unif-group-sizes "${@}"
+        "${m}" "${k}" "${n}" "${g}" --unif-group-sizes "${@}"
 
     local triton_cache_dir="${HOME}/.triton/cache"
     assembly_file=$(find "${triton_cache_dir}" -name '*.amdgcn' -print -quit)
@@ -48,9 +48,7 @@ function reg_spills_layouts() {
     for shape in "${shapes[@]}"; do
         shape=$(tr --complement --delete '0-9 ' <<< "${shape}")
 
-        reg_spills "${shape}" TN
         reg_spills "${shape}" NN
-        reg_spills "${shape}" NT
     done
 }
 

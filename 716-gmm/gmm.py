@@ -25,9 +25,6 @@ from dtypes import (
 
 # Common module
 from common import (
-    TRANS_LHS,
-    TRANS_RHS,
-    TRANS_OUT,
     RNG_SEED,
     NUM_GROUP_SIZES,
     REAL_SHAPES,
@@ -101,9 +98,6 @@ def benchmark_triton(
     bench_shape: tuple[int, int, int, int] | None = None,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
-    trans_lhs: bool = TRANS_LHS,
-    trans_rhs: bool = TRANS_RHS,
-    trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
     unif_group_sizes: bool = False,
@@ -115,9 +109,6 @@ def benchmark_triton(
     in_dtype_str = str_from_dtype(in_dtype)
     out_dtype_str = str_from_dtype(out_dtype)
     dtypes_desc = f"i{in_dtype_str}_o{out_dtype_str}"
-    layout_desc = "".join(
-        "c" if trans else "r" for trans in (trans_lhs, trans_rhs, trans_out)
-    )
     triton_provider = f"triton_{dtypes_desc}"
 
     @triton.testing.perf_report(
@@ -127,7 +118,7 @@ def benchmark_triton(
             line_arg="provider",
             line_vals=[triton_provider],
             line_names=[triton_provider],
-            plot_name=f"triton_{gmm_type}_perf_{dtypes_desc}_{layout_desc}",
+            plot_name=f"triton_{gmm_type}_perf_{dtypes_desc}",
             args={},
             ylabel="TFLOPS",
         )
@@ -145,9 +136,6 @@ def benchmark_triton(
             num_group_sizes,
             input_type=in_dtype,
             output_type=out_dtype,
-            trans_lhs=trans_lhs,
-            trans_rhs=trans_rhs,
-            trans_out=trans_out,
             rng_seed=rng_seed,
             unif_group_sizes=unif_group_sizes,
         )
@@ -169,7 +157,6 @@ def benchmark_triton(
                     rhs,
                     group_sizes,
                     preferred_element_type=out_dtype,
-                    trans_out=trans_out,
                     existing_out=out,
                     autotune=True,
                 ),
@@ -221,12 +208,6 @@ def benchmark_triton(
         rng_seed,
     )
     logging.info(
-        "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
-        trans_lhs,
-        trans_rhs,
-        trans_out,
-    )
-    logging.info(
         "  num_group_sizes = %d, unif_group_sizes = %s",
         num_group_sizes,
         unif_group_sizes,
@@ -247,9 +228,6 @@ def run_triton(
     G: int,
     in_dtype: torch.dtype = DTYPE,
     out_dtype: torch.dtype = DTYPE,
-    trans_lhs: bool = TRANS_LHS,
-    trans_rhs: bool = TRANS_RHS,
-    trans_out: bool = TRANS_OUT,
     rng_seed: int = RNG_SEED,
     num_group_sizes: int = NUM_GROUP_SIZES,
     unif_group_sizes: bool = False,
@@ -262,12 +240,6 @@ def run_triton(
         str_from_dtype(in_dtype),
         str_from_dtype(out_dtype),
         rng_seed,
-    )
-    logging.info(
-        "  trans_lhs = %s, trans_rhs = %s, trans_out = %s",
-        trans_lhs,
-        trans_rhs,
-        trans_out,
     )
     logging.info(
         "  num_group_sizes = %d, unif_group_sizes = %s",
@@ -284,9 +256,6 @@ def run_triton(
         num_group_sizes,
         input_type=in_dtype,
         output_type=out_dtype,
-        trans_lhs=trans_lhs,
-        trans_rhs=trans_rhs,
-        trans_out=trans_out,
         rng_seed=rng_seed,
         unif_group_sizes=unif_group_sizes,
     )
@@ -298,7 +267,6 @@ def run_triton(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
-            trans_out=trans_out,
             existing_out=out,
         )
 
@@ -326,9 +294,6 @@ def main() -> None:
             bench_shape=None if all(arg is None for arg in shape) else shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,
-            trans_lhs=args.trans_lhs,
-            trans_rhs=args.trans_rhs,
-            trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
             unif_group_sizes=args.unif_group_sizes,
@@ -339,9 +304,6 @@ def main() -> None:
             *shape,
             in_dtype=in_dtype,
             out_dtype=out_dtype,
-            trans_lhs=args.trans_lhs,
-            trans_rhs=args.trans_rhs,
-            trans_out=args.trans_out,
             rng_seed=args.rng_seed,
             num_group_sizes=args.num_group_sizes,
             unif_group_sizes=args.unif_group_sizes,

@@ -26,13 +26,7 @@ from test_common import (
     TEST_SHAPES,
     INPUT_DTYPES_STR,
     OUTPUT_DTYPES_STR,
-    TRANS_LSH_STR,
-    TRANS_RHS_STR,
-    TRANS_OUT_STR,
     RNG_SEED_STR,
-    trans_lhs_from_str,
-    trans_rhs_from_str,
-    trans_out_from_str,
     rng_seed_from_str,
     skip,
     num_group_sizes,
@@ -49,9 +43,6 @@ from test_common import (
 @pytest.mark.parametrize("M, K, N, G", TEST_SHAPES)
 @pytest.mark.parametrize("in_dtype_str", INPUT_DTYPES_STR)
 @pytest.mark.parametrize("out_dtype_str", OUTPUT_DTYPES_STR)
-@pytest.mark.parametrize("trans_lhs_str", TRANS_LSH_STR)
-@pytest.mark.parametrize("trans_rhs_str", TRANS_RHS_STR)
-@pytest.mark.parametrize("trans_out_str", TRANS_OUT_STR)
 @pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
 def test_tgmm(
     quick_test: bool,
@@ -62,9 +53,6 @@ def test_tgmm(
     G: int,
     in_dtype_str: str,
     out_dtype_str: str,
-    trans_lhs_str: str,
-    trans_rhs_str: str,
-    trans_out_str: str,
     rng_seed_str: str,
 ):
     assert persistent_str in {"p", "np"}
@@ -72,12 +60,9 @@ def test_tgmm(
 
     in_dtype = dtype_from_str(in_dtype_str)
     out_dtype = dtype_from_str(out_dtype_str)
-    trans_lhs = trans_lhs_from_str(trans_lhs_str)
-    trans_rhs = trans_rhs_from_str(trans_rhs_str)
-    trans_out = trans_out_from_str(trans_out_str)
     rng_seed = rng_seed_from_str(rng_seed_str)
 
-    skip(quick_test, in_dtype, out_dtype, trans_lhs, trans_rhs, trans_out)
+    skip(quick_test, in_dtype, out_dtype)
 
     lhs, rhs, multiple_group_sizes, out_torch = gen_tgmm_tensors(
         M,
@@ -87,9 +72,6 @@ def test_tgmm(
         num_group_sizes(quick_test),
         input_type=in_dtype,
         output_type=out_dtype,
-        trans_lhs=trans_lhs,
-        trans_rhs=trans_rhs,
-        trans_out=trans_out,
         rng_seed=rng_seed,
         unif_group_sizes=True,  # 1st group_sizes in test is evenly distributed
     )
@@ -114,7 +96,6 @@ def test_tgmm(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
-            trans_out=trans_out,
             existing_out=out_torch,
         )
 
@@ -123,7 +104,6 @@ def test_tgmm(
             rhs,
             group_sizes,
             preferred_element_type=out_dtype,
-            trans_out=trans_out,
             existing_out=out_triton,
             autotune=autotune,
         )

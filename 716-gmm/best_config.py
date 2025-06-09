@@ -20,9 +20,6 @@ from dtypes import SUPPORTED_DTYPES, DTYPE
 
 # Common module
 from common import (
-    TRANS_LHS,
-    TRANS_RHS,
-    TRANS_OUT,
     num_sms,
     is_power_of_2,
     get_tiling,
@@ -41,9 +38,6 @@ class ConfigKey:
     G: int
     input_type: torch.dtype = DTYPE
     output_type: torch.dtype = DTYPE
-    trans_lhs: bool = TRANS_LHS
-    trans_rhs: bool = TRANS_RHS
-    trans_out: bool = TRANS_OUT
 
     def __post_init__(self):
         assert self.M > 0, f"Number of lhs rows M must be positive (M = {self.M})."
@@ -127,77 +121,40 @@ DEFAULT_NON_PERSISTENT_TGMM_CONFIG: Config = Config(
 
 
 # GMM tuning database for gfx942.
+# TODO: Tune again for everything being row-major!
 # fmt: off
 BEST_GMM_CONFIGS: dict[ConfigKey, Config] = {
-    # bf16 bf16 TN (rcr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m= 64, block_size_k=32, block_size_n=256, group_size=4, num_warps=8, num_stages=2, grid_dim=608),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=8, num_warps=8, num_stages=1, grid_dim=304),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=4, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=2, num_warps=8, num_stages=1),
-    # bf16 bf16 NN (ccr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=128, block_size_k=32, block_size_n=256, group_size=4, num_warps=4, num_stages=1, grid_dim=912),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=4, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=2, num_warps=4, num_stages=1),
-    # bf16 bf16 NT (crr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n= 64, group_size=1, num_warps=8, num_stages=2, grid_dim=608),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=2, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=256, block_size_k=32, block_size_n=128, group_size=8, num_warps=8, num_stages=2),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): DEFAULT_GMM_CONFIG,
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): DEFAULT_GMM_CONFIG,
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): DEFAULT_GMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): DEFAULT_GMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): DEFAULT_GMM_CONFIG,
 }
 # fmt: on
 
 
 # Persistent TGMM tuning database for gfx942.
-# TODO: Perform tuning and update best configs for big (M, K, N, G) = (3145728, 2048, 1408, 8) shape.
+# TODO: Tune again for everything being row-major!
 # fmt: off
 BEST_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
-    # bf16 bf16 TN (rcr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(block_size_m=32, block_size_k=64, block_size_n=256, group_size=2, grid_dim=1216, num_warps=4, num_stages=2),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): DEFAULT_PERSISTENT_TGMM_CONFIG,
     ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(block_size_m=64, block_size_k=64, block_size_n=256, group_size=4, grid_dim= 912, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(block_size_m=64, block_size_k=64, block_size_n=256, group_size=1, grid_dim= 304, num_warps=4, num_stages=2),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(block_size_m=32, block_size_k=32, block_size_n=256, group_size=1, grid_dim= 608, num_warps=8, num_stages=1),
-    # bf16 bf16 NN (ccr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=2, grid_dim= 912, num_warps=4, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): DEFAULT_PERSISTENT_TGMM_CONFIG,
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(block_size_m=64, block_size_k=256, block_size_n= 64, group_size=8, grid_dim=1216, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(block_size_m=32, block_size_k=128, block_size_n=256, group_size=1, grid_dim= 304, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=2, grid_dim= 304, num_warps=8, num_stages=1),
-    # bf16 bf16 NT (crr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=4, grid_dim= 912, num_warps=4, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): DEFAULT_PERSISTENT_TGMM_CONFIG,
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=8, grid_dim=1216, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=2, grid_dim= 608, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(block_size_m=32, block_size_k=256, block_size_n=128, group_size=2, grid_dim= 304, num_warps=8, num_stages=1),
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): DEFAULT_PERSISTENT_TGMM_CONFIG,
 }
 # fmt: on
 
 
 # Non-persistent TGMM tuning database for gfx942.
+# TODO: Tune again for everything being row-major!
 # fmt: off
 BEST_NON_PERSISTENT_TGMM_CONFIGS: dict[ConfigKey, Config] = {
-    # bf16 bf16 TN (rcr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=256, group_size=1, num_warps=8, num_stages=2),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): Config(grid_dim=None, block_size_m=64, block_size_k= 32, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): Config(grid_dim=None, block_size_m=64, block_size_k= 64, block_size_n=256, group_size=1, num_warps=4, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): Config(grid_dim=None, block_size_m=32, block_size_k= 64, block_size_n=256, group_size=8, num_warps=4, num_stages=2),
-    # bf16 bf16 NN (ccr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=2, num_warps=4, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True): Config(grid_dim=None, block_size_m=32, block_size_k=128, block_size_n=128, group_size=8, num_warps=8, num_stages=1),
-    # bf16 bf16 NT (crr)
-    ConfigKey(M=  49152, K= 1408, N= 2048, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n= 64, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M= 393216, K= 2048, N= 1408, G=64, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=64, block_size_k=256, block_size_n=128, group_size=1, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K= 6144, N=16384, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
-    ConfigKey(M=  32768, K=16384, N= 6144, G= 8, trans_lhs=True, trans_rhs=False): Config(grid_dim=None, block_size_m=32, block_size_k=256, block_size_n=256, group_size=8, num_warps=8, num_stages=1),
+    ConfigKey(M=  49152, K= 1408, N= 2048, G=64): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=3145728, K= 2048, N= 1408, G= 8): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M= 393216, K= 2048, N= 1408, G=64): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K= 6144, N=16384, G= 8): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
+    ConfigKey(M=  32768, K=16384, N= 6144, G= 8): DEFAULT_NON_PERSISTENT_TGMM_CONFIG,
 }
 # fmt: on
 
@@ -217,13 +174,8 @@ def _pick_best_config(
     group_sizes: torch.Tensor | None,
     input_type: torch.dtype = DTYPE,
     output_type: torch.dtype = DTYPE,
-    trans_lhs: bool = TRANS_LHS,
-    trans_rhs: bool = TRANS_RHS,
-    trans_out: bool = TRANS_OUT,
 ) -> Config:
-    config_key = ConfigKey(
-        M, K, N, G, input_type, output_type, trans_lhs, trans_rhs, trans_out
-    )
+    config_key = ConfigKey(M, K, N, G, input_type, output_type)
     logging.debug("Querying best %s config for %s.", desc, config_key)
     try:
         best_config = best_configs[config_key]

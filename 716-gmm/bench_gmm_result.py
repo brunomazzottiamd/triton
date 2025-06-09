@@ -59,12 +59,8 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
                 n: int = int(bench_file_name_match.group(3))
                 g: int = int(bench_file_name_match.group(4))
                 layout: str = bench_file_name_match.group(5)
-                if layout == "rcr":
-                    layout = "TN"
-                elif layout == "ccr":
+                if layout == "rrr":
                     layout = "NN"
-                elif layout == "crr":
-                    layout = "NT"
                 bench_metadata.append((file_name, m, k, n, g, layout))
 
         if not bench_metadata:

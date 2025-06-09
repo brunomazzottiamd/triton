@@ -21,8 +21,8 @@ import triton.language as tl
 from dtypes import DTYPE
 
 # Common module
-from common import TRANS_OUT, is_power_of_2, check_input_device_dtype
-from tgmm_common import get_tgmm_shape, get_tgmm_output, get_tgmm_transposition
+from common import is_power_of_2, check_input_device_dtype
+from tgmm_common import get_tgmm_shape, get_tgmm_output
 from triton_common import full_tuning_space
 
 # GMM kernel
@@ -185,7 +185,6 @@ def triton_persistent_tgmm(
     rhs: Tensor,
     group_sizes: Tensor,
     preferred_element_type: torch.dtype = DTYPE,
-    trans_out: bool = TRANS_OUT,
     existing_out: Tensor | None = None,
     autotune: bool = False,
 ) -> Tensor:
@@ -199,13 +198,10 @@ def triton_persistent_tgmm(
         G,
         device=lhs.device,
         preferred_element_type=preferred_element_type,
-        trans=trans_out,
         existing_out=existing_out,
     )
 
     if not autotune:
-        trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
-
         best_config = pick_best_persistent_tgmm_config(
             M,
             K,
@@ -214,9 +210,6 @@ def triton_persistent_tgmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
-            trans_lhs=trans_lhs,
-            trans_rhs=trans_rhs,
-            trans_out=trans_out,
         )
 
         assert best_config.grid_dim is not None, "Unexpected absent grid dimension."
@@ -423,7 +416,6 @@ def triton_non_persistent_tgmm(
     rhs: Tensor,
     group_sizes: Tensor,
     preferred_element_type: torch.dtype = DTYPE,
-    trans_out: bool = TRANS_OUT,
     existing_out: Tensor | None = None,
     autotune: bool = False,
 ) -> Tensor:
@@ -437,13 +429,10 @@ def triton_non_persistent_tgmm(
         G,
         device=lhs.device,
         preferred_element_type=preferred_element_type,
-        trans=trans_out,
         existing_out=existing_out,
     )
 
     if not autotune:
-        trans_lhs, trans_rhs, trans_out, _, _, _ = get_tgmm_transposition(lhs, rhs, out)
-
         best_config = pick_best_non_persistent_tgmm_config(
             M,
             K,
@@ -452,9 +441,6 @@ def triton_non_persistent_tgmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
-            trans_lhs=trans_lhs,
-            trans_rhs=trans_rhs,
-            trans_out=trans_out,
         )
 
         assert best_config.grid_dim is None, "Unexpected existing grid dimension."
