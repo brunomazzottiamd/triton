@@ -100,21 +100,12 @@ def triton_gmm_kernel_core(
             offs_lhs_m = (
                 tile_m.to(tl.int64) * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             ) % m
-            offs_lhs_m = tl.max_contiguous(
-                tl.multiple_of(offs_lhs_m, BLOCK_SIZE_M), BLOCK_SIZE_M
-            )
-
             offs_rhs_n = (
                 tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             ) % N
-            offs_rhs_n = tl.max_contiguous(
-                tl.multiple_of(offs_rhs_n, BLOCK_SIZE_N), BLOCK_SIZE_N
-            )
-
             offs_k = tl.arange(0, BLOCK_SIZE_K).to(tl.int64)
 
             lhs_ptrs = lhs_ptr + (last_m + offs_lhs_m[:, None]) * K + offs_k[None, :]
-            lhs_ptrs = tl.multiple_of(lhs_ptrs, (1, 16))
 
             rhs_ptrs = (
                 rhs_ptr
@@ -122,7 +113,6 @@ def triton_gmm_kernel_core(
                 + offs_k[:, None] * N
                 + offs_rhs_n[None, :]
             )
-            rhs_ptrs = tl.multiple_of(rhs_ptrs, (1, 16))
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
@@ -152,7 +142,6 @@ def triton_gmm_kernel_core(
             out_ptrs = (
                 out_ptr + (last_m + offs_out_m[:, None]) * N + offs_out_n[None, :]
             )
-            out_ptrs = tl.multiple_of(out_ptrs, (16, 16))
 
             tl.store(
                 out_ptrs,
