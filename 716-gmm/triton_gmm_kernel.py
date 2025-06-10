@@ -48,12 +48,6 @@ def triton_gmm_kernel_core(
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-    lhs_step = BLOCK_SIZE_K
-    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
-
-    rhs_step = BLOCK_SIZE_K * N
-    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
-
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
     tl.device_assert(tile >= 0, "tile < 0 (at initialization)")
@@ -131,8 +125,8 @@ def triton_gmm_kernel_core(
 
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
-                lhs_ptrs += lhs_step
-                rhs_ptrs += rhs_step
+                lhs_ptrs += BLOCK_SIZE_K
+                rhs_ptrs += BLOCK_SIZE_K * N
 
             acc = acc.to(out_ptr.type.element_ty)
 

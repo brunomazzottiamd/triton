@@ -53,12 +53,6 @@ def triton_tgmm_persistent_kernel_core(
     num_tiles = num_k_tiles * num_n_tiles
     tl.device_assert(num_tiles > 0, "num_tiles <= 0")
 
-    lhs_step = BLOCK_SIZE_M
-    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
-
-    rhs_step = BLOCK_SIZE_M * N
-    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
-
     # Current tile. Each program computes multiple tiles of each group.
     tile = tl.program_id(0)
     tl.device_assert(tile >= 0, "tile < 0 (at initialization)")
@@ -117,8 +111,8 @@ def triton_tgmm_persistent_kernel_core(
                 lhs = tl.load(lhs_ptrs)
                 rhs = tl.load(rhs_ptrs)
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
-                lhs_ptrs += lhs_step
-                rhs_ptrs += rhs_step
+                lhs_ptrs += BLOCK_SIZE_M
+                rhs_ptrs += BLOCK_SIZE_M * N
 
             if not m_divisible_by_block_m:
                 offs_lhs_k = (
@@ -221,12 +215,6 @@ def triton_tgmm_non_persistent_kernel_core(
     num_n_tiles = tl.cdiv(N, BLOCK_SIZE_N)
     tl.device_assert(num_n_tiles > 0, "num_n_tiles <= 0")
 
-    lhs_step = BLOCK_SIZE_M
-    tl.device_assert(lhs_step > 0, "lhs_step <= 0")
-
-    rhs_step = BLOCK_SIZE_M * N
-    tl.device_assert(rhs_step > 0, "rhs_step <= 0")
-
     # Get MM tile from grid.
     tile_in_mm = tl.program_id(1)
     tl.device_assert(tile_in_mm >= 0, "tile_in_mm < 0")
@@ -257,8 +245,8 @@ def triton_tgmm_non_persistent_kernel_core(
         lhs = tl.load(lhs_ptrs)
         rhs = tl.load(rhs_ptrs)
         acc += tl.dot(lhs, rhs, input_precision="ieee")
-        lhs_ptrs += lhs_step
-        rhs_ptrs += rhs_step
+        lhs_ptrs += BLOCK_SIZE_M
+        rhs_ptrs += BLOCK_SIZE_M * N
 
     if not m_divisible_by_block_m:
         offs_lhs_k = (
