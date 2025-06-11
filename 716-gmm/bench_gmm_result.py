@@ -11,6 +11,7 @@ import argparse
 import logging
 import os
 import re
+import sys
 from typing import Any
 import zipfile
 
@@ -153,11 +154,18 @@ def parse_args() -> argparse.Namespace:
         description="extract data from GMM benchmark zip file"
     )
     parser.add_argument("zip_file", help="zip file to process")
+    parser.add_argument(
+        "-f", "--format", choices=["md", "csv"], default="md", help="output format"
+    )
     return parser.parse_args()
 
 
-def print_markdown(df: pd.DataFrame) -> None:
-    print(df.to_markdown(index=False))
+def print_dataframe(df: pd.DataFrame, format: str) -> None:
+    assert format in {"md", "csv"}
+    if format == "md":
+        print(df.to_markdown(index=False))
+    else:
+        df.to_csv(sys.stdout, index=False)
 
 
 def main() -> None:
@@ -174,11 +182,13 @@ def main() -> None:
     if bench_data is None:
         return
 
+    bench_data.sort_values(by=["M", "K", "N", "G"], inplace=True)
+
     logging.info("Performance:")
-    print_markdown(bench_data[["M", "K", "N", "G", "Layout", "TFLOPS"]])
+    print_dataframe(bench_data[["M", "K", "N", "G", "Layout", "TFLOPS"]], args.format)
 
     logging.info("Best tuning configuration:")
-    print_markdown(bench_data.drop(columns=["TFLOPS"]))
+    print_dataframe(bench_data.drop(columns=["TFLOPS"]), args.format)
 
 
 if __name__ == "__main__":
