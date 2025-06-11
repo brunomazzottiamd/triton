@@ -8,6 +8,7 @@
 # ------------------------------------------------------------------------------
 
 import argparse
+from datetime import datetime, timedelta
 import logging
 import os
 import re
@@ -139,7 +140,63 @@ def get_best_config(
     return best_config
 
 
-# there are %d configurations.
+TUNING_CONFIGS_PATTERN: re.Pattern = re.compile(r"there are (\d+) configurations\.")
+
+
+# Get number of distinct tuning configs.
+def get_num_tuning_configs(bench_file_name: str, bench_file_content: str) -> int | None:
+    tuning_configs_match: re.Match[str] | None = TUNING_CONFIGS_PATTERN.search(
+        bench_file_content
+    )
+
+    if not tuning_configs_match:
+        logging.warning(
+            "Could not find number of tuning configs in [%s], skipping it.",
+            bench_file_name,
+        )
+        return None
+
+    tuning_configs: int = int(tuning_configs_match.group(1))
+    logging.debug("Tuning performed with %d configs.", tuning_configs)
+
+    return tuning_configs
+
+
+TIMESTAMP_PATTERN: re.Pattern = re.compile(
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}", re.MULTILINE
+)
+
+TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S,%f"
+
+
+# Get total tuning time in hours.
+def get_tuning_time_hours(
+    bench_file_name: str, bench_file_content: str
+) -> float | None:
+    timestamps = re.findall(TIMESTAMP_PATTERN, bench_file_content)
+
+    if len(timestamps) < 2:
+        logging.warning(
+            "Not enough timestamps found in [%s], skipping it.",
+            bench_file_name,
+        )
+        return None
+
+    start_timestamp: datetime = datetime.strptime(timestamps[0], TIMESTAMP_FORMAT)
+    logging.debug("Tuning started at %s.", start_timestamp)
+    end_timestamp: datetime = datetime.strptime(timestamps[-1], TIMESTAMP_FORMAT)
+    logging.debug("Tuning ended at %s.", end_timestamp)
+
+    if end_timestamp < start_timestamp:
+        logging.error(
+            "Inconsistent tuning timestamps in [%s], skipping it.", bench_file_name
+        )
+        return None
+
+    elapsed_time: timedelta = end_timestamp - start_timestamp
+    logging.debug("Elapsed tuning time is %s.", elapsed_time)
+
+    return round(elapsed_time.total_seconds() / 3600, 2)
 
 
 def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
@@ -159,13 +216,25 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
                 tflops: tuple[float, float, float] | None = get_tflops(
                     bench_file_name, bench_file_content
                 )
-                if not tflops:
+                if tflops is None:
                     continue
 
                 best_config: dict[str, int] | None = get_best_config(
                     bench_file_name, bench_file_content
                 )
-                if not best_config:
+                if best_config is None:
+                    continue
+
+                num_tuning_configs: int | None = get_num_tuning_configs(
+                    bench_file_name, bench_file_content
+                )
+                if num_tuning_configs is None:
+                    continue
+
+                tuning_time_hours: float | None = get_tuning_time_hours(
+                    bench_file_name, bench_file_content
+                )
+                if tuning_time_hours is None:
                     continue
 
                 bench_data.append(
@@ -176,6 +245,8 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
                         "G": g,
                         "Layout": layout,
                         "TFLOPS": tflops[1],
+                        "Number of Tuning Configs": num_tuning_configs,
+                        "Total Tuning Time (h)": tuning_time_hours,
                     }
                     | best_config
                 )
@@ -184,7 +255,11 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
         logging.error("There's no valid data in [%s].", zip_file_name)
         return None
 
-    return pd.DataFrame(bench_data)
+    df: pd.DataFrame = pd.DataFrame(bench_data)
+    df["Tuning Time per Config (s)"] = (
+        (3600 * df["Total Tuning Time (h)"]) / df["Number of Tuning Configs"]
+    ).round(2)
+    return df
 
 
 def print_dataframe(df: pd.DataFrame, format: str) -> None:
@@ -220,13 +295,23 @@ def main() -> None:
     if bench_data is None:
         return
 
-    bench_data.sort_values(by=["M", "K", "N", "G"], inplace=True)
+    id_cols = ["M", "K", "N", "G", "Layout"]
+    bench_data.sort_values(by=id_cols, inplace=True)
 
     logging.info("Performance:")
-    print_dataframe(bench_data[["M", "K", "N", "G", "Layout", "TFLOPS"]], args.format)
+    perf_cols = ["TFLOPS"]
+    print_dataframe(bench_data[id_cols + perf_cols], args.format)
+
+    logging.info("Tuning time:")
+    tuning_time_cols = [
+        "Number of Tuning Configs",
+        "Total Tuning Time (h)",
+        "Tuning Time per Config (s)",
+    ]
+    print_dataframe(bench_data[id_cols + tuning_time_cols], args.format)
 
     logging.info("Best tuning configuration:")
-    print_dataframe(bench_data.drop(columns=["TFLOPS"]), args.format)
+    print_dataframe(bench_data.drop(columns=perf_cols + tuning_time_cols), args.format)
 
 
 if __name__ == "__main__":
