@@ -29,9 +29,9 @@ RNG_SEED: int = 0
 NUM_GROUP_SIZES: int = 1
 
 
-# Default transposition (TN).
+# Default transposition: rrr (NN).
 TRANS_LHS: bool = False
-TRANS_RHS: bool = True
+TRANS_RHS: bool = False
 TRANS_OUT: bool = False
 
 

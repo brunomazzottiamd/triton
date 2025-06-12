@@ -29,6 +29,7 @@ function reg_spills() {
     clean_triton_cache
 
     python "${script_dir}/gmm.py" \
+        --gmm-type gmm \
         "${m}" "${k}" "${n}" "${g}" --layout "${layout}" --unif-group-sizes "${@}"
 
     local triton_cache_dir="${HOME}/.triton/cache"
@@ -48,8 +49,8 @@ function reg_spills_layouts() {
     for shape in "${shapes[@]}"; do
         shape=$(tr --complement --delete '0-9 ' <<< "${shape}")
 
-        reg_spills "${shape}" TN
         reg_spills "${shape}" NN
+        reg_spills "${shape}" TN
         reg_spills "${shape}" NT
     done
 }

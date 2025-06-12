@@ -70,13 +70,13 @@ def layout_choices() -> set[str]:
         for lhs, rhs, out in itertools.product(
             row_col_layout_chars, row_col_layout_chars, row_col_layout_chars
         )
-    } | {"tn", "nn", "nt"}
+    } | {"nn", "tn", "nt"}
 
 
 def trans_from_layout(layout: str) -> tuple[bool, ...]:
     assert layout in layout_choices(), "Invalid matrix multiplication layout."
     try:
-        layout = {"tn": "rcr", "nn": "ccr", "nt": "crr"}[layout]
+        layout = {"nn": "rrr", "tn": "crr", "nt": "rcr"}[layout]
     except KeyError:
         pass
     assert (
