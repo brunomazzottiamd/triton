@@ -5,6 +5,9 @@
 # ------------------------------------------------------------------------------
 
 
+# Python standard library
+from functools import partial
+
 # PyTorch
 import torch
 from torch import Tensor
@@ -41,6 +44,21 @@ TEST_SHAPES: list[tuple[int, int, int, int]] = TEST_ONLY_SHAPES + REAL_SHAPES
 # Input and output types.
 INPUT_DTYPES_STR: set[str] = {"i" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
 OUTPUT_DTYPES_STR: set[str] = {"o" + dtype_str for dtype_str in SUPPORTED_DTYPES_STR}
+
+
+# Transpositions.
+
+TRANS_LSH_STR: set[str] = {f"tlhs{b}" for b in {"F", "T"}}
+TRANS_RHS_STR: set[str] = {f"trhs{b}" for b in {"F", "T"}}
+
+
+def trans_from_str(trans_str: str, tensor_str: str) -> bool:
+    assert tensor_str in {"lhs", "rhs"}, f"Invalid tensor string ({tensor_str})."
+    return trans_str.replace(f"t{tensor_str}", "") == "T"
+
+
+trans_lhs_from_str = partial(trans_from_str, tensor_str="lhs")
+trans_rhs_from_str = partial(trans_from_str, tensor_str="rhs")
 
 
 # RNG seed.

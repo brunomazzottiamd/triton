@@ -22,7 +22,7 @@ from dtypes import DTYPE
 
 # Common module
 from common import is_power_of_2, check_input_device_dtype
-from tgmm_common import get_tgmm_shape, get_tgmm_output
+from tgmm_common import get_tgmm_shape, get_tgmm_output, get_tgmm_transposition
 from triton_common import full_tuning_space
 
 # GMM kernel
@@ -68,6 +68,7 @@ def triton_tgmm_persistent_kernel(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -81,6 +82,7 @@ def triton_tgmm_persistent_kernel(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_LHS=TRANS_LHS,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
@@ -105,6 +107,7 @@ def triton_tgmm_persistent_autotuned_kernel(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -118,6 +121,7 @@ def triton_tgmm_persistent_autotuned_kernel(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_LHS=TRANS_LHS,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
@@ -177,6 +181,8 @@ def triton_persistent_tgmm(
         existing_out=existing_out,
     )
 
+    trans_lhs, _ = get_tgmm_transposition(lhs, rhs, out)
+
     if not autotune:
         best_config = pick_best_persistent_tgmm_config(
             M,
@@ -186,6 +192,7 @@ def triton_persistent_tgmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
+            trans_lhs=trans_lhs,
         )
 
         assert best_config.grid_dim is not None, "Unexpected absent grid dimension."
@@ -205,6 +212,7 @@ def triton_persistent_tgmm(
             # Tensor shapes:
             M, K, N, G,
             # Meta-parameters:
+            TRANS_LHS=trans_lhs,
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
@@ -231,6 +239,8 @@ def triton_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
+            # Meta-parameters:
+            TRANS_LHS=trans_lhs,
         )
         # fmt: on
 
@@ -270,6 +280,7 @@ def triton_tgmm_non_persistent_kernel(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_G: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -283,6 +294,7 @@ def triton_tgmm_non_persistent_kernel(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_LHS=TRANS_LHS,
         BLOCK_SIZE_G=BLOCK_SIZE_G,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -310,6 +322,7 @@ def triton_tgmm_non_persistent_autotuned_kernel(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_G: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -323,6 +336,7 @@ def triton_tgmm_non_persistent_autotuned_kernel(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_LHS=TRANS_LHS,
         BLOCK_SIZE_G=BLOCK_SIZE_G,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
@@ -380,6 +394,8 @@ def triton_non_persistent_tgmm(
         existing_out=existing_out,
     )
 
+    trans_lhs, _ = get_tgmm_transposition(lhs, rhs, out)
+
     if not autotune:
         best_config = pick_best_non_persistent_tgmm_config(
             M,
@@ -389,6 +405,7 @@ def triton_non_persistent_tgmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
+            trans_lhs=trans_lhs,
         )
 
         assert best_config.grid_dim is None, "Unexpected existing grid dimension."
@@ -407,6 +424,7 @@ def triton_non_persistent_tgmm(
             # Tensor shapes:
             M, K, N, G,
             # Meta-parameters:
+            TRANS_LHS=trans_lhs,
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
@@ -431,6 +449,8 @@ def triton_non_persistent_tgmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
+            # Meta-parameters:
+            TRANS_LHS=trans_lhs,
         )
         # fmt: on
 

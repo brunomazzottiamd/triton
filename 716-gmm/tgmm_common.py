@@ -24,6 +24,7 @@ from dtypes import DTYPE
 from common import (
     DEVICE,
     RNG_SEED,
+    TRANS_LHS,
 )
 
 # Group sizes module
@@ -45,6 +46,7 @@ def gen_tgmm_input(
     G: int,
     device: torch.device | str = DEVICE,
     preferred_element_type: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
     rng_seed: int | None = RNG_SEED,
     unif_group_sizes: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor]:
@@ -56,7 +58,10 @@ def gen_tgmm_input(
     if rng_seed is not None:
         torch.manual_seed(rng_seed)
 
-    lhs = torch.randn((K, M), dtype=torch.float32, device=device)
+    if trans_lhs:
+        lhs = torch.randn((M, K), dtype=torch.float32, device=device).T
+    else:
+        lhs = torch.randn((K, M), dtype=torch.float32, device=device)
     lhs = lhs.to(preferred_element_type)
 
     rhs = torch.randn((M, N), dtype=torch.float32, device=device)
@@ -96,6 +101,8 @@ def gen_tgmm_tensors(
     device: torch.device | str = DEVICE,
     input_type: torch.dtype = DTYPE,
     output_type: torch.dtype = DTYPE,
+    trans_lhs: bool = TRANS_LHS,
+    trans_rhs: bool = False,
     rng_seed: int | None = RNG_SEED,
     unif_group_sizes: bool = False,
 ) -> tuple[Tensor, Tensor, list[Tensor], Tensor]:
@@ -106,6 +113,7 @@ def gen_tgmm_tensors(
         G,
         device=device,
         preferred_element_type=input_type,
+        trans_lhs=trans_lhs,
         rng_seed=rng_seed,
         unif_group_sizes=unif_group_sizes,
     )
@@ -179,3 +187,46 @@ def get_tgmm_output(
         device=device,
         preferred_element_type=preferred_element_type,
     )
+
+
+def get_tgmm_transposition(lhs: Tensor, rhs: Tensor, out: Tensor) -> tuple[bool, int]:
+    assert lhs.dim() == 2, f"lhs must have 2 dimensions (it's {lhs.dim()})."
+    assert rhs.dim() == 2, f"rhs must have 2 dimensions (it's {rhs.dim()})."
+    assert out.dim() == 3, f"out must have 3 dimensions (it's {out.dim()})."
+
+    lhs_k, lhs_m = lhs.shape
+    rhs_m, rhs_n = rhs.shape
+    G, out_k, out_n = out.shape
+
+    assert (
+        lhs_m == rhs_m
+    ), f"M dimension of lhs and rhs don't match (lhs = {lhs_m}, rhs = {rhs_m})."
+    M = lhs_m
+    assert (
+        lhs_k == out_k
+    ), f"K dimension of lhs and out don't match (lhs = {lhs_k}, rhs = {out_k})."
+    K = lhs_k
+    assert (
+        rhs_n == out_n
+    ), f"N dimension of rhs and out don't match (lhs = {rhs_n}, rhs = {out_n})."
+    N = rhs_n
+
+    assert M > 0, f"M must be positive, it's {M}."
+    assert K > 0, f"K must be positive, it's {K}."
+    assert N > 0, f"N must be positive, it's {N}"
+    assert G > 0, f"G must be positive, it's {G}"
+
+    is_lhs_row_major = lhs.stride() == (M, 1)
+    is_lhs_col_major = lhs.stride() == (1, K)
+    assert (
+        is_lhs_row_major != is_lhs_col_major
+    ), "lhs must be row-major or column-major."
+    is_rhs_row_major = rhs.stride() == (N, 1)
+    assert is_rhs_row_major, "rhs must be row-major."
+    is_out_row_major = out.stride() == (K * N, N, 1)
+    assert is_out_row_major, "out must be row-major."
+
+    # Get lhs leading dimension according to transposition configuration.
+    ld_lhs = M if is_lhs_row_major else K
+
+    return is_lhs_col_major, ld_lhs

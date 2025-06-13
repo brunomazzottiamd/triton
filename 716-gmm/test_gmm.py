@@ -25,7 +25,9 @@ from test_common import (
     TEST_SHAPES,
     INPUT_DTYPES_STR,
     OUTPUT_DTYPES_STR,
+    TRANS_RHS_STR,
     RNG_SEED_STR,
+    trans_rhs_from_str,
     rng_seed_from_str,
     skip,
     num_group_sizes,
@@ -41,6 +43,7 @@ from test_common import (
 @pytest.mark.parametrize("M, K, N, G", TEST_SHAPES)
 @pytest.mark.parametrize("in_dtype_str", INPUT_DTYPES_STR)
 @pytest.mark.parametrize("out_dtype_str", OUTPUT_DTYPES_STR)
+@pytest.mark.parametrize("trans_rhs_str", TRANS_RHS_STR)
 @pytest.mark.parametrize("rng_seed_str", RNG_SEED_STR)
 def test_gmm(
     quick_test: bool,
@@ -50,10 +53,12 @@ def test_gmm(
     G: int,
     in_dtype_str: str,
     out_dtype_str: str,
+    trans_rhs_str: str,
     rng_seed_str: str,
 ):
     in_dtype = dtype_from_str(in_dtype_str)
     out_dtype = dtype_from_str(out_dtype_str)
+    trans_rhs = trans_rhs_from_str(trans_rhs_str)
     rng_seed = rng_seed_from_str(rng_seed_str)
 
     skip(quick_test, in_dtype, out_dtype)
@@ -66,6 +71,7 @@ def test_gmm(
         num_group_sizes(quick_test),
         input_type=in_dtype,
         output_type=out_dtype,
+        trans_rhs=trans_rhs,
         rng_seed=rng_seed,
         unif_group_sizes=True,  # 1st group_sizes in test is evenly distributed
     )

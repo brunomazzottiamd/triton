@@ -33,6 +33,7 @@ def triton_gmm_kernel_core(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_RHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -101,12 +102,20 @@ def triton_gmm_kernel_core(
 
             lhs_ptrs = lhs_ptr + (last_m + offs_lhs_m[:, None]) * K + offs_k[None, :]
 
-            rhs_ptrs = (
-                rhs_ptr
-                + g.to(tl.int64) * K * N
-                + offs_k[:, None] * N
-                + offs_rhs_n[None, :]
-            )
+            if TRANS_RHS:
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None]
+                    + offs_rhs_n[None, :] * K
+                )
+            else:
+                rhs_ptrs = (
+                    rhs_ptr
+                    + g.to(tl.int64) * K * N
+                    + offs_k[:, None] * N
+                    + offs_rhs_n[None, :]
+                )
 
             acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
@@ -126,7 +135,11 @@ def triton_gmm_kernel_core(
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
 
                 lhs_ptrs += BLOCK_SIZE_K
-                rhs_ptrs += BLOCK_SIZE_K * N
+
+                if TRANS_RHS:
+                    rhs_ptrs += BLOCK_SIZE_K
+                else:
+                    rhs_ptrs += BLOCK_SIZE_K * N
 
             acc = acc.to(out_ptr.type.element_ty)
 

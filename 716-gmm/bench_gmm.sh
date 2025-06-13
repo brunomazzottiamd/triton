@@ -35,7 +35,6 @@ function bench() {
     shift
 
     TRITON_CACHE_DIR="${triton_cache_dir}" python "${script_dir}/gmm.py" \
-	--gmm-type gmm \
         "${m}" "${k}" "${n}" "${g}" \
         --bench --verbose --num-group-sizes 20 "${@}" 2>&1
 
@@ -51,10 +50,35 @@ function bench_layouts() {
 
     log "Benchmarking shape (M, K, N, G) = (${m}, ${k}, ${n}, ${g})..."
 
-    # Only supported layout:
-    # * NN: row-major x row-major = row-major
-    local base_layout_file="${base_bench_file}_rrr"
-    bench "${shape}" "${base_layout_file}_cache" | tee "${base_layout_file}.log"
+    # NN GMM
+    local base_layout_file="${base_bench_file}_gmm_rrr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type gmm \
+        | tee "${base_layout_file}.log"
+
+    # NT GMM
+    local base_layout_file="${base_bench_file}_gmm_rcr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type gmm --trans-rhs \
+        | tee "${base_layout_file}.log"
+
+    # NN PTGMM
+    local base_layout_file="${base_bench_file}_ptgmm_rrr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type ptgmm \
+        | tee "${base_layout_file}.log"
+
+    # TN PTGMM
+    local base_layout_file="${base_bench_file}_ptgmm_crr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type ptgmm --trans-lhs \
+        | tee "${base_layout_file}.log"
+
+    # NN NPTGMM
+    local base_layout_file="${base_bench_file}_nptgmm_rrr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type tgmm \
+        | tee "${base_layout_file}.log"
+
+    # TN NPTGMM
+    local base_layout_file="${base_bench_file}_nptgmm_crr"
+    bench "${shape}" "${base_layout_file}_cache" --gmm-type tgmm --trans-lhs \
+        | tee "${base_layout_file}.log"
 }
 
 

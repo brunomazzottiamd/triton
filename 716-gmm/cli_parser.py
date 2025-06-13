@@ -15,6 +15,8 @@ from dtypes import (
 
 # Common module
 from common import (
+    TRANS_LHS,
+    TRANS_RHS,
     RNG_SEED,
     NUM_GROUP_SIZES,
 )
@@ -38,6 +40,25 @@ def positive_int(value: str) -> int:
     if int_value <= 0:
         raise error
     return int_value
+
+
+def add_trans_arg(
+    parser: argparse.ArgumentParser, arg: str, default_trans: bool
+) -> None:
+    if default_trans:
+        parser.add_argument(
+            f"--no-trans-{arg}",
+            action="store_false",
+            dest=f"trans_{arg}",
+            help=f"don't transpose {arg}, i.e. row-major {arg}",
+        )
+    else:
+        parser.add_argument(
+            f"--trans-{arg}",
+            action="store_true",
+            dest=f"trans_{arg}",
+            help=f"transpose {arg}, i.e. column-major {arg}",
+        )
 
 
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -96,6 +117,10 @@ def parse_args() -> argparse.Namespace:
         default=DTYPE_STR,
         help=f"output data type (default: {DTYPE_STR})",
     )
+
+    # Transpose and layout
+    add_trans_arg(parser, "lhs", TRANS_LHS)
+    add_trans_arg(parser, "rhs", TRANS_RHS)
 
     # Input generation
     parser.add_argument(

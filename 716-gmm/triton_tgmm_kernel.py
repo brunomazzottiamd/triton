@@ -33,6 +33,7 @@ def triton_tgmm_persistent_kernel_core(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -96,7 +97,14 @@ def triton_tgmm_persistent_kernel_core(
             ) % N
             offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
 
-            lhs_ptrs = lhs_ptr + offs_lhs_k[:, None] * M + (last_m + offs_m[None, :])
+            if TRANS_LHS:
+                lhs_ptrs = (
+                    lhs_ptr + offs_lhs_k[:, None] + (last_m + offs_m[None, :]) * K
+                )
+            else:
+                lhs_ptrs = (
+                    lhs_ptr + offs_lhs_k[:, None] * M + (last_m + offs_m[None, :])
+                )
 
             rhs_ptrs = rhs_ptr + (last_m + offs_m[:, None]) * N + offs_rhs_n[None, :]
 
@@ -110,8 +118,14 @@ def triton_tgmm_persistent_kernel_core(
             for _ in range(0, loop_m):
                 lhs = tl.load(lhs_ptrs)
                 rhs = tl.load(rhs_ptrs)
+
                 acc += tl.dot(lhs, rhs, input_precision="ieee")
-                lhs_ptrs += BLOCK_SIZE_M
+
+                if TRANS_LHS:
+                    lhs_ptrs += BLOCK_SIZE_M * K
+                else:
+                    lhs_ptrs += BLOCK_SIZE_M
+
                 rhs_ptrs += BLOCK_SIZE_M * N
 
             if not m_divisible_by_block_m:
@@ -178,6 +192,7 @@ def triton_tgmm_non_persistent_kernel_core(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_LHS: tl.constexpr,
     BLOCK_SIZE_G: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
@@ -230,7 +245,10 @@ def triton_tgmm_non_persistent_kernel_core(
     offs_rhs_n = (tile_n.to(tl.int64) * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
     offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
 
-    lhs_ptrs = lhs_ptr + offs_lhs_k[:, None] * M + (start_m + offs_m[None, :])
+    if TRANS_LHS:
+        lhs_ptrs = lhs_ptr + offs_lhs_k[:, None] + (start_m + offs_m[None, :]) * K
+    else:
+        lhs_ptrs = lhs_ptr + offs_lhs_k[:, None] * M + (start_m + offs_m[None, :])
 
     rhs_ptrs = rhs_ptr + (start_m + offs_m[:, None]) * N + offs_rhs_n[None, :]
 
@@ -244,8 +262,14 @@ def triton_tgmm_non_persistent_kernel_core(
     for _ in range(0, loop_m):
         lhs = tl.load(lhs_ptrs)
         rhs = tl.load(rhs_ptrs)
+
         acc += tl.dot(lhs, rhs, input_precision="ieee")
-        lhs_ptrs += BLOCK_SIZE_M
+
+        if TRANS_LHS:
+            lhs_ptrs += BLOCK_SIZE_M * K
+        else:
+            lhs_ptrs += BLOCK_SIZE_M
+
         rhs_ptrs += BLOCK_SIZE_M * N
 
     if not m_divisible_by_block_m:

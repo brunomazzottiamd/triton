@@ -22,7 +22,7 @@ from dtypes import DTYPE
 
 # Common module
 from common import is_power_of_2, check_input_device_dtype
-from gmm_common import get_gmm_shape, get_gmm_output
+from gmm_common import get_gmm_shape, get_gmm_output, get_gmm_transposition
 from triton_common import full_tuning_space
 
 # GMM kernel
@@ -62,6 +62,7 @@ def triton_gmm_kernel(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_RHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -76,6 +77,7 @@ def triton_gmm_kernel(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_RHS=TRANS_RHS,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
@@ -102,6 +104,7 @@ def triton_gmm_kernel_autotuned(
     N: int,
     G: int,
     # Meta-parameters:
+    TRANS_RHS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -116,6 +119,7 @@ def triton_gmm_kernel_autotuned(
         # Tensor shapes:
         M, K, N, G,
         # Meta-parameters:
+        TRANS_RHS=TRANS_RHS,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
         BLOCK_SIZE_N=BLOCK_SIZE_N,
@@ -173,6 +177,8 @@ def triton_gmm(
         existing_out=existing_out,
     )
 
+    trans_rhs, _ = get_gmm_transposition(lhs, rhs, out)
+
     if not autotune:
         best_config = pick_best_gmm_config(
             M,
@@ -182,6 +188,7 @@ def triton_gmm(
             group_sizes=group_sizes,
             input_type=lhs.dtype,
             output_type=out.dtype,
+            trans_rhs=trans_rhs,
         )
 
         assert best_config.grid_dim is not None, "Unexpected absent grid dimension."
@@ -200,6 +207,7 @@ def triton_gmm(
             # Tensor shapes:
             M, K, N, G,
             # Meta-parameters:
+            TRANS_RHS=trans_rhs,
             BLOCK_SIZE_M=best_config.block_size_m,
             BLOCK_SIZE_K=best_config.block_size_k,
             BLOCK_SIZE_N=best_config.block_size_n,
@@ -225,6 +233,8 @@ def triton_gmm(
             lhs, rhs, group_sizes, out,
             # Tensor shapes:
             M, K, N, G,
+            # Meta-parameters:
+            TRANS_RHS=trans_rhs,
         )
         # fmt: on
 
