@@ -99,6 +99,7 @@ def parse_args() -> argparse.Namespace:
     # GMM type
     parser.add_argument(
         "--gmm-type",
+        type=str.lower,
         choices={"gmm", "ptgmm", "tgmm"},
         default="gmm",
         help="GMM variant to run: GMM, persistent TGMM, non-persistent TGMM",
@@ -107,12 +108,14 @@ def parse_args() -> argparse.Namespace:
     # Data type
     parser.add_argument(
         "--input-type",
+        type=str.lower,
         choices=SUPPORTED_DTYPES_STR,
         default=DTYPE_STR,
         help=f"input data type (default: {DTYPE_STR})",
     )
     parser.add_argument(
         "--output-type",
+        type=str.lower,
         choices=SUPPORTED_DTYPES_STR,
         default=DTYPE_STR,
         help=f"output data type (default: {DTYPE_STR})",
