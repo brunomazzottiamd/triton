@@ -31,12 +31,14 @@ def is_valid_file(file_name: str) -> bool:
     )
 
 
-def get_bench_metadata(zip_file: ZipFile) -> list[tuple[str, int, int, int, int, str]]:
+def get_bench_metadata(
+    zip_file: ZipFile,
+) -> list[tuple[str, int, int, int, int, str, str]]:
     bench_file_name_pattern: re.Pattern = re.compile(
-        r"^bench_(\d+)_(\d+)_(\d+)_(\d+)_([cr]{3})\.log$"
+        r"^bench_(\d+)_(\d+)_(\d+)_(\d+)_(.+)_([cr]{3})\.log$"
     )
 
-    bench_metadata: list[tuple[str, int, int, int, int, str]] = []
+    bench_metadata: list[tuple[str, int, int, int, int, str, str]] = []
 
     for file_name in zip_file.namelist():
         bench_file_name_match: re.Match[str] | None = bench_file_name_pattern.fullmatch(
@@ -52,12 +54,19 @@ def get_bench_metadata(zip_file: ZipFile) -> list[tuple[str, int, int, int, int,
             k: int = int(bench_file_name_match.group(2))
             n: int = int(bench_file_name_match.group(3))
             g: int = int(bench_file_name_match.group(4))
-            layout: str = bench_file_name_match.group(5)
+            kernel: str = bench_file_name_match.group(5).upper()
+            layout: str = bench_file_name_match.group(6)
 
             if layout == "rrr":
                 layout = "NN"
+            elif layout == "rcr":
+                layout = "NT"
+            elif layout == "crr":
+                layout = "TN"
+            else:
+                layout = layout.upper()
 
-            bench_metadata.append((file_name, m, k, n, g, layout))
+            bench_metadata.append((file_name, m, k, n, g, kernel, layout))
 
     if not bench_metadata:
         logging.error("There's no benchmark files in [%s].", zip_file.filename)
@@ -209,7 +218,7 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
     bench_data: list[dict[str, Any]] = []
 
     with ZipFile(zip_file_name, "r") as zip_file:
-        for bench_file_name, m, k, n, g, layout in get_bench_metadata(zip_file):
+        for bench_file_name, m, k, n, g, kernel, layout in get_bench_metadata(zip_file):
             with zip_file.open(bench_file_name) as bench_file:
                 bench_file_content: str = bench_file.read().decode("utf-8")
 
@@ -243,6 +252,7 @@ def get_bench_results(zip_file_name: str) -> pd.DataFrame | None:
                         "K": k,
                         "N": n,
                         "G": g,
+                        "Kernel": kernel,
                         "Layout": layout,
                         "TFLOPS": tflops[1],
                         "Number of Tuning Configs": num_tuning_configs,
@@ -295,7 +305,7 @@ def main() -> None:
     if bench_data is None:
         return
 
-    id_cols = ["M", "K", "N", "G", "Layout"]
+    id_cols = ["M", "K", "N", "G", "Kernel", "Layout"]
     bench_data.sort_values(by=id_cols, inplace=True)
 
     logging.info("Performance:")
