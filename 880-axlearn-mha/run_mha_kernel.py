@@ -3,6 +3,10 @@
 
 # -*- coding: utf-8 -*-
 
+# Disable [https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file/]
+# ruff warning.
+# ruff: noqa: E402
+
 
 # Imports.
 # ------------------------------------------------------------------------------
@@ -19,7 +23,14 @@ import torch
 
 # JAX
 import jax
+
+# JAX GPU backend only.
+jax.config.update("jax_platforms", "gpu")
+
 import jax.numpy as jnp
+
+# Disable annoying AITER warning about NUMA balancing.
+logging.getLogger("aiter").disabled = True
 
 # AITER MHA
 from aiter.ops.triton.mha import flash_attn_func as aiter_mha
@@ -76,7 +87,7 @@ def torch_to_np(x: torch.Tensor) -> np.ndarray:
 
 
 def np_to_jax(x: np.ndarray) -> jax.Array:
-    return jnp.array(x)
+    return jnp.array(x, device=jax.devices("gpu")[0])
 
 
 def jax_to_np(x: jax.Array) -> np.ndarray:
@@ -112,19 +123,19 @@ def log_diff_percentage(diff: np.ndarray, epsilon: float) -> None:
     percentage_within_threshold = 100 * num_within_threshold / diff.size
     assert percentage_within_threshold > 0
     logging.info(
-        "%f%% of elements differ by at most %f", percentage_within_threshold, epsilon
+        "%6.2f%% of elements differ by at most %.2e",
+        percentage_within_threshold,
+        epsilon,
     )
 
 
 def log_diff(aiter_o: np.ndarray, pallas_o: np.ndarray) -> None:
     diff = np.abs(aiter_o - pallas_o)
-    logging.info("Minimum absolute difference: %f", np.min(diff))
-    logging.info("Mean absolute difference: %f", np.mean(diff))
-    logging.info("Maximum absolute difference: %f", np.max(diff))
-    log_diff_percentage(diff, 0.001)
-    log_diff_percentage(diff, 0.01)
-    log_diff_percentage(diff, 0.1)
-    log_diff_percentage(diff, 1)
+    logging.info("Minimum absolute difference: %.2f", np.min(diff))
+    logging.info("Mean absolute difference: %.2f", np.mean(diff))
+    logging.info("Maximum absolute difference: %.2f", np.max(diff))
+    for exp in range(-3, 2):
+        log_diff_percentage(diff, 10**exp)
 
 
 # Command line interface parsing.
