@@ -237,6 +237,7 @@ def main() -> None:
     logging.basicConfig(
         format="%(asctime)s > %(message)s",
         level=logging.INFO if args.verbose else logging.ERROR,
+        force=True,  # override previous logging configuration
     )
 
     logging.info("Generating tensors with shape %s...", args.shape)
