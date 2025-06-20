@@ -38,11 +38,14 @@ from aiter.ops.triton.mha import flash_attn_func as aiter_mha
 # Pallas  MHA
 from jax.experimental.pallas.ops.gpu.attention import mha as pallas_mha
 
+# AXLearn MHA
+from axlearn.common.flash_attention.gpu_attention import flash_attention as axlearn_mha
+
 
 # Global defaults.
 # ------------------------------------------------------------------------------
 
-KERNELS: set[str] = {"aiter", "pallas", "compare"}
+KERNELS: set[str] = {"aiter", "pallas", "axlearn", "compare"}
 KERNEL: str = "compare"
 assert KERNEL in KERNELS
 
@@ -110,6 +113,10 @@ def run_pallas_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
             np_to_jax(q), np_to_jax(k), np_to_jax(v), segment_ids=None, causal=True
         )
     )
+
+
+def run_axlearn_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
+    return jax_to_np(axlearn_mha(np_to_jax(q), np_to_jax(k), np_to_jax(v)))
 
 
 # Result comparison.
@@ -243,9 +250,17 @@ def main() -> None:
         logging.info("Running Pallas MHA...")
         pallas_o = run_pallas_mha(q, k, v)
 
+    if args.kernel in {"axlearn", "compare"}:
+        logging.info("Running AXLearn MHA...")
+        axlearn_o = run_axlearn_mha(q, k, v)
+
     if args.kernel == "compare":
         logging.info("AITER output vs. Pallas output:")
         log_diff(aiter_o, pallas_o)
+        logging.info("AITER output vs. AXLearn output:")
+        log_diff(aiter_o, axlearn_o)
+        logging.info("Pallas output vs. AXLearn output:")
+        log_diff(pallas_o, axlearn_o)
 
 
 if __name__ == "__main__":
