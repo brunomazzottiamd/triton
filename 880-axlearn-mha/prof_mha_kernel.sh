@@ -33,11 +33,10 @@ elif [ "${kernel}" == pallas ]; then
         -o "${script_dir}/pallas_mha_kernel_prof_data" \
         -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
 
-elif [ "${kernel}" == pallas ]; then
+elif [ "${kernel}" == axlearn ]; then
     echo 'PROFILING AXLEARN MHA KERNEL...'
-    # TODO: Figure out what's the correct AXLearn kernel name. Guess: _mha_forward_kernel.
     prof_kernel.sh \
-        -r  AXLEARN_KERNEL_NAME_PLACEHOLDER \
+        -r  mha_forward__1.kd \
         -o "${script_dir}/axlearn_mha_kernel_prof_data" \
         -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
 
