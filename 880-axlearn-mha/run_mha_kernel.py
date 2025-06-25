@@ -49,9 +49,10 @@ KERNELS: set[str] = {"aiter", "pallas", "axlearn", "compare"}
 KERNEL: str = "compare"
 assert KERNEL in KERNELS
 
+# Default shape: 70B model
 BATCH_SIZE: int = 2
-SEQ_LEN: int = 8192
-NUM_HEADS: int = 24
+SEQ_LEN: int = 4096
+NUM_HEADS: int = 64
 HEAD_SIZE: int = 128
 SHAPE: tuple[int, int, int, int] = (BATCH_SIZE, SEQ_LEN, NUM_HEADS, HEAD_SIZE)
 assert all(dim > 0 for dim in SHAPE)
