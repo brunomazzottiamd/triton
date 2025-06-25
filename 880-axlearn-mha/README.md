@@ -20,7 +20,7 @@ The scripts described by this document are hosted at [Bruno's Triton fork](https
 
 ## `run_mha_kernel.py`
 
-Python script with a simple command line interface to execute MHA kernels of interest. It can run MHA kernels from AITER, AXLearn and Pallas. The main kernels are the one from AITER (good performance) and the one from AXLearn (bad performance). The Pallas kernel is an unintended leftover at the time of writing.
+Python script with a simple command line interface to execute MHA kernels of interest. It can run MHA kernels from AITER (good performance) and AXLearn (bad performance, trying to improve it).
 
 We're interested in causal MHA with `fp16` data type. So, the command line interface just allows changing the shape of attention tensors.
 

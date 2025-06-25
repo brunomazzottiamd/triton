@@ -2,7 +2,7 @@
 
 
 usage() {
-    echo "Usage: ${0} {aiter,pallas,axlearn}"
+    echo "Usage: ${0} {aiter,axlearn}"
     echo 'error: a single argument with the kernel name is required'
     exit 1
 }
@@ -24,13 +24,6 @@ if [ "${kernel}" == aiter ]; then
     prof_kernel.sh \
         -r _attn_fwd.kd \
         -o "${script_dir}/aiter_mha_kernel_prof_data" \
-        -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
-
-elif [ "${kernel}" == pallas ]; then
-    echo 'PROFILING PALLAS MHA KERNEL...'
-    prof_kernel.sh \
-        -r mha_forward__1.kd \
-        -o "${script_dir}/pallas_mha_kernel_prof_data" \
         -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
 
 elif [ "${kernel}" == axlearn ]; then

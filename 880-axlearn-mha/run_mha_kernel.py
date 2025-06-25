@@ -35,9 +35,6 @@ logging.getLogger("aiter").disabled = True
 # AITER MHA
 from aiter.ops.triton.mha import flash_attn_func as aiter_mha
 
-# Pallas  MHA
-from jax.experimental.pallas.ops.gpu.attention import mha as pallas_mha
-
 # AXLearn MHA
 from axlearn.common.flash_attention.gpu_attention import flash_attention as axlearn_mha
 
@@ -45,7 +42,7 @@ from axlearn.common.flash_attention.gpu_attention import flash_attention as axle
 # Global defaults.
 # ------------------------------------------------------------------------------
 
-KERNELS: set[str] = {"aiter", "pallas", "axlearn", "compare"}
+KERNELS: set[str] = {"aiter", "axlearn", "compare"}
 KERNEL: str = "compare"
 assert KERNEL in KERNELS
 
@@ -108,14 +105,6 @@ def run_aiter_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
     )
 
 
-def run_pallas_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
-    return jax_to_np(
-        pallas_mha(
-            np_to_jax(q), np_to_jax(k), np_to_jax(v), segment_ids=None, causal=True
-        )
-    )
-
-
 def run_axlearn_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
     return jax_to_np(axlearn_mha(np_to_jax(q), np_to_jax(k), np_to_jax(v)))
 
@@ -137,10 +126,10 @@ def log_diff_percentage(diff: np.ndarray, epsilon: float) -> None:
     )
 
 
-def log_diff(aiter_o: np.ndarray, pallas_o: np.ndarray) -> None:
-    diff = np.abs(aiter_o - pallas_o)
+def log_diff(aiter_o: np.ndarray, axlearn_o: np.ndarray) -> None:
+    diff = np.abs(aiter_o - axlearn_o)
     logging.info("Minimum absolute difference: %.2f", np.min(diff))
-    logging.info("Mean absolute difference: %.2f", np.mean(diff))
+    logging.info("   Mean absolute difference: %.2f", np.mean(diff))
     logging.info("Maximum absolute difference: %.2f", np.max(diff))
     for exp in range(-3, 2):
         log_diff_percentage(diff, 10**exp)
@@ -176,7 +165,7 @@ def parse_args() -> argparse.Namespace:
         type=str.lower,
         choices=KERNELS,
         default=KERNEL,
-        help=f"MHA kernel to run: Triton kernel from AITER, Pallas kernel from JAX, compare both kernels (default: {KERNEL})",
+        help=f"MHA kernel to run: Triton kernel from AITER, Pallas kernel from AXLearn, compare both kernels (default: {KERNEL})",
     )
 
     # Shape:
@@ -248,21 +237,13 @@ def main() -> None:
         logging.info("Running AITER MHA...")
         aiter_o = run_aiter_mha(q, k, v)
 
-    if args.kernel in {"pallas", "compare"}:
-        logging.info("Running Pallas MHA...")
-        pallas_o = run_pallas_mha(q, k, v)
-
     if args.kernel in {"axlearn", "compare"}:
         logging.info("Running AXLearn MHA...")
         axlearn_o = run_axlearn_mha(q, k, v)
 
     if args.kernel == "compare":
-        logging.info("AITER output vs. Pallas output:")
-        log_diff(aiter_o, pallas_o)
         logging.info("AITER output vs. AXLearn output:")
         log_diff(aiter_o, axlearn_o)
-        logging.info("Pallas output vs. AXLearn output:")
-        log_diff(pallas_o, axlearn_o)
 
 
 if __name__ == "__main__":
