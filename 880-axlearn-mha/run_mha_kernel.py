@@ -84,7 +84,7 @@ def np_to_torch(x: np.ndarray) -> torch.Tensor:
 
 
 def torch_to_np(x: torch.Tensor) -> np.ndarray:
-    return x.cpu().numpy()
+    return x.detach().cpu().numpy()
 
 
 def np_to_jax(x: np.ndarray) -> jax.Array:
@@ -99,13 +99,47 @@ def jax_to_np(x: jax.Array) -> np.ndarray:
 # ------------------------------------------------------------------------------
 
 
-def run_aiter_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
-    return torch_to_np(
-        aiter_mha(np_to_torch(q), np_to_torch(k), np_to_torch(v), causal=True)
-    )
+def run_aiter_mha(
+    q: np.ndarray, k: np.ndarray, v: np.ndarray, do: np.ndarray | None = None
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # Convert QKV input tensors from NumPy to PyTorch.
+    torch_q = np_to_torch(q)
+    torch_k = np_to_torch(k)
+    torch_v = np_to_torch(v)
+
+    # Requires QKV gradients if we're going to run backward.
+    if do is not None:
+        torch_q.requires_grad_()
+        torch_k.requires_grad_()
+        torch_v.requires_grad_()
+
+    # Run forward.
+    torch_o = aiter_mha(torch_q, torch_k, torch_v, causal=True)
+
+    # Convert O back to NumPy.
+    o = torch_to_np(torch_o)
+
+    if do is not None:
+        # Run backward.
+        torch_o.backward(np_to_torch(do))
+
+        # Convert QKV gradients back to NumPy.
+        assert torch_q.grad is not None
+        dq = torch_to_np(torch_q.grad)
+        assert torch_k.grad is not None
+        dk = torch_to_np(torch_k.grad)
+        assert torch_v.grad is not None
+        dv = torch_to_np(torch_v.grad)
+
+        return o, dq, dk, dv
+
+    else:
+        return o
 
 
-def run_axlearn_mha(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
+def run_axlearn_mha(
+    q: np.ndarray, k: np.ndarray, v: np.ndarray, do: np.ndarray | None = None
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     return jax_to_np(axlearn_mha(np_to_jax(q), np_to_jax(k), np_to_jax(v)))
 
 
@@ -208,6 +242,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Other arguments:
+    parser.add_argument(
+        "--run-bwd", action="store_true", default=False, help="run backward pass"
+    )
     parser.add_argument("--verbose", action="store_true", help="enable verbose output")
     parser.add_argument("--help", action="help", help="show this help message and exit")
 
@@ -232,18 +269,36 @@ def main() -> None:
 
     logging.info("Generating tensors with shape %s...", args.shape)
     q, k, v = gen_qkv(shape=args.shape, rng_seed=args.rng_seed)
+    do = gen_tensor(shape=args.shape) if args.run_bwd else None
+
+    logging.info("Running backward pass? %s", "yes" if args.run_bwd else "no")
 
     if args.kernel in {"aiter", "compare"}:
         logging.info("Running AITER MHA...")
-        aiter_o = run_aiter_mha(q, k, v)
+        if args.run_bwd:
+            aiter_o, aiter_dq, aiter_dk, aiter_dv = run_aiter_mha(q, k, v, do=do)
+        else:
+            aiter_o = run_aiter_mha(q, k, v)
 
     if args.kernel in {"axlearn", "compare"}:
         logging.info("Running AXLearn MHA...")
-        axlearn_o = run_axlearn_mha(q, k, v)
+        if args.run_bwd:
+            axlearn_o, axlearn_dq, axlearn_dk, axlearn_dv = run_axlearn_mha(
+                q, k, v, do=do
+            )
+        else:
+            axlearn_o = run_axlearn_mha(q, k, v)
 
     if args.kernel == "compare":
         logging.info("AITER output vs. AXLearn output:")
         log_diff(aiter_o, axlearn_o)
+        if args.run_bwd:
+            logging.info("AITER dQ vs. AXLearn dQ:")
+            log_diff(aiter_dq, axlearn_dq)
+            logging.info("AITER dK vs. AXLearn dK:")
+            log_diff(aiter_dk, axlearn_dk)
+            logging.info("AITER dV vs. AXLearn dV:")
+            log_diff(aiter_dv, axlearn_dv)
 
 
 if __name__ == "__main__":
