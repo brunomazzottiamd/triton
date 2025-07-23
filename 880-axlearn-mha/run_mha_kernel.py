@@ -140,6 +140,8 @@ def run_aiter_mha(
 def run_axlearn_mha(
     q: np.ndarray, k: np.ndarray, v: np.ndarray, do: np.ndarray | None = None
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # jax_o, grad_fn = jax.vjp(axlearn_mha, jax_q, jax_k, jax_v)
+    # ... = grad_fn(jax_do) => out of shared memory error!
     return jax_to_np(axlearn_mha(np_to_jax(q), np_to_jax(k), np_to_jax(v)))
 
 
