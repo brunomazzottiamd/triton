@@ -22,9 +22,9 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 if [ "${kernel}" == aiter ]; then
     echo 'PROFILING AITER MHA KERNEL...'
     prof_kernel.sh \
-        -r _attn_fwd.kd \
+        -r '\(_attn_fwd\)\|\(_bwd_preprocess\)\|\(bwd_kernel_causal\).kd' \
         -o "${script_dir}/aiter_mha_kernel_prof_data" \
-        -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
+        -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}" --run-bwd
 
 elif [ "${kernel}" == axlearn ]; then
     echo 'PROFILING AXLEARN MHA KERNEL...'
