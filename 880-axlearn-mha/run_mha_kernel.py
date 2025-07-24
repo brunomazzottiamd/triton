@@ -140,9 +140,21 @@ def run_aiter_mha(
 def run_axlearn_mha(
     q: np.ndarray, k: np.ndarray, v: np.ndarray, do: np.ndarray | None = None
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # jax_o, grad_fn = jax.vjp(axlearn_mha, jax_q, jax_k, jax_v)
-    # ... = grad_fn(jax_do) => out of shared memory error!
-    return jax_to_np(axlearn_mha(np_to_jax(q), np_to_jax(k), np_to_jax(v)))
+    # Convert QKV input tensors from NumPy to JAX.
+    jax_q = np_to_jax(q)
+    jax_k = np_to_jax(k)
+    jax_v = np_to_jax(v)
+
+    if do is None:
+        # Run forward.
+        return jax_to_np(axlearn_mha(jax_q, jax_k, jax_v))
+
+    else:
+        # Run forward + backward.
+        jax_o, grad_fn = jax.vjp(axlearn_mha, jax_q, jax_k, jax_v)
+        # TODO: Figure out the correct return of `grad_fn`.
+        jax_dq, jax_dk, jax_dv = grad_fn(np_to_jax(do))  # out of shared memory error!
+        return jax_to_np(jax_o), jax_to_np(jax_dq), jax_to_np(jax_dk), jax_to_np(jax_dv)
 
 
 # Result comparison.
