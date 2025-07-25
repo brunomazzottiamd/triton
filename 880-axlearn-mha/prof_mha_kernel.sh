@@ -28,10 +28,16 @@ if [ "${kernel}" == aiter ]; then
 
 elif [ "${kernel}" == axlearn ]; then
     echo 'PROFILING AXLEARN MHA KERNEL...'
+    # forward:
+    regex='\(mha_forward__1\)'
+    # backward delta:
+    regex+='\|\(wrapped_multiply\)\|\(wrapped_convert\)\|\(input_reduce_fusion\)\|\(wrapped_transpose\)'
+    # backward dq, dk, dv:
+    regex+='\|\(_mha_backward_kernel_dkdv__1\)\|\(_mha_backward_kernel_dq__1\)'
     prof_kernel.sh \
-        -r  mha_forward__1.kd \
+        -r "${regex}.kd" \
         -o "${script_dir}/axlearn_mha_kernel_prof_data" \
-        -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}"
+        -- python "${script_dir}/run_mha_kernel.py" --kernel "${kernel}" --run-bwd
 
 else
     usage
