@@ -1,0 +1,11 @@
+[workspace]
+authors = ["Bruno Mazzotti <bruno.mazzotti@amd.com>"]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+name = "mojo_triton"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+mojo = ">=25.5.0.dev2025072805,<26"
