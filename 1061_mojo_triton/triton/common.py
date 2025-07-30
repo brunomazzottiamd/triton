@@ -24,19 +24,17 @@ def tensor_equal(x: np.ndarray, y: np.ndarray) -> bool:
 
 
 def tensors_dir() -> str:
-    triton_source_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root_dir = os.path.dirname(triton_source_dir)
-    tensors_dir = os.path.join(project_root_dir, "tensors")
+    tensors_dir = os.path.join(os.getcwd(), "tensors")
     if not os.path.exists(tensors_dir):
         os.mkdir(tensors_dir)
     return tensors_dir
 
 
 def tensor_file(tensor_name: str) -> str:
-    return f"{tensors_dir()}/{tensor_name}.npz"
+    return os.path.join(tensors_dir(), f"{tensor_name}.npz")
 
 
-def save_tensor(tensor_name: str, x: np.ndarray):
+def save_tensor(tensor_name: str, x: np.ndarray) -> None:
     np.savez_compressed(tensor_file(tensor_name), x)
 
 
