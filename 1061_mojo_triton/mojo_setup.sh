@@ -12,7 +12,7 @@ mojo_dir="${script_dir}/mojo"
 if [ ! -d "${mojo_dir}" ]; then
     # Initialize pixi project.
     pixi init "${mojo_dir}" \
-	 --channel https://conda.modular.com/max-nightly/ \
-	 --channel conda-forge
+        --channel https://conda.modular.com/max-nightly/ \
+        --channel conda-forge
     pixi add --manifest-path="${mojo_dir}/pixi.toml" modular
 fi
