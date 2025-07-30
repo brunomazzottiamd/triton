@@ -7,15 +7,13 @@ if ! command -v pixi >/dev/null 2>&1; then
 fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-project_dir="${script_dir}/mojo_triton"
+mojo_dir="${script_dir}/mojo"
 
-if [ ! -d "${project_dir}" ]; then
+if [ ! -d "${mojo_dir}" ]; then
     # Initialize pixi project.
-    pixi init "${project_dir}" \
+    pixi init "${mojo_dir}" \
 	 --channel https://conda.modular.com/max-nightly/ \
 	 --channel conda-forge
-    pushd "${project_dir}"
-    # pixi add python=3.12 pytorch=2.7.1
-    # pixi add modular
-    pixi add mojo
+    pushd "${mojo_dir}"
+    pixi add modular
 fi
