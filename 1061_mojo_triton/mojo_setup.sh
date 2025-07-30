@@ -14,6 +14,5 @@ if [ ! -d "${mojo_dir}" ]; then
     pixi init "${mojo_dir}" \
 	 --channel https://conda.modular.com/max-nightly/ \
 	 --channel conda-forge
-    pushd "${mojo_dir}"
-    pixi add modular
+    pixi add --manifest-path="${mojo_dir}/pixi.toml" modular
 fi
