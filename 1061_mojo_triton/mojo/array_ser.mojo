@@ -2,16 +2,16 @@ from os.path import dirname, join, exists
 from pathlib.path import cwd
 from python import Python
 
+from common import gen_tensor
+
 
 def main():
     # Import Python's NumPy.
     np = Python.import_module("numpy")
 
     # Generate Mojo array.
-    rng = np.random.default_rng(seed=20250730)
     array_size = 10
-    mojo_array = rng.standard_normal(size=array_size, dtype=np.float32)
-    mojo_array = mojo_array.astype(np.float16)
+    mojo_array = gen_tensor(array_size)
 
     # Get directory of serialized arrays.
     arrays_dir = String(cwd())

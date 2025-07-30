@@ -1,12 +1,13 @@
 import os
+
 import numpy as np
+
+from common import gen_tensor
 
 
 # Generate Triton array.
-rng = np.random.default_rng(seed=20250730)
 array_size = 10
-triton_array = rng.standard_normal(size=array_size, dtype=np.float32)
-triton_array = triton_array.astype(np.float16)
+triton_array = gen_tensor(array_size)
 
 # Get directory of serialized arrays.
 script_path = os.path.abspath(__file__)
