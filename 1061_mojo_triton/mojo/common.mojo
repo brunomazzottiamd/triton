@@ -12,6 +12,16 @@ def numpy() -> PythonObject:
     return Python.import_module("numpy")
 
 
+def empty_tensor(size: Int) -> PythonObject:
+    np = numpy()
+    return np.empty(size, dtype=np.float16)
+
+
+def empty_tensor(shape: Tuple[Int, Int]) -> PythonObject:
+    np = numpy()
+    return np.empty(Python.tuple(shape[0], shape[1]), dtype=np.float16)
+
+
 def gen_tensor(size: Int, rng_seed: Optional[Int] = DEFAULT_RNG_SEED) -> PythonObject:
     np = numpy()
     if rng_seed:
