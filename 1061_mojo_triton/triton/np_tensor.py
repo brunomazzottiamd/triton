@@ -2,8 +2,6 @@ import os
 
 import numpy as np
 
-import torch
-
 
 DEFAULT_RNG_SEED: int = 20250730
 
@@ -43,11 +41,3 @@ def load_tensor(tensor_name: str) -> np.ndarray | None:
     if not os.path.exists(f):
         return None
     return np.load(f)["arr_0"]
-
-
-def np_to_torch(x: np.ndarray) -> torch.Tensor:
-    return torch.from_numpy(x).cuda()
-
-
-def torch_to_np(x: torch.Tensor) -> np.ndarray:
-    return x.detach().cpu().numpy()

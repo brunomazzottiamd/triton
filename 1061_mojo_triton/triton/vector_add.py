@@ -1,13 +1,12 @@
 import argparse
 
 import numpy as np
-
 import torch
-
 import triton
 import triton.language as tl
 
-from common import gen_tensor, save_tensor, np_to_torch, torch_to_np
+from np_tensor import gen_tensor, save_tensor
+from torch_interop import np_to_torch, torch_to_np
 
 
 @triton.jit
@@ -21,25 +20,24 @@ def vector_add_kernel(x_ptr, y_ptr, z_ptr, n, BLOCK_SIZE: tl.constexpr):
     tl.store(z_ptr + offs, z, mask=mask)
 
 
-def torch_vector_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    n = x.numel()
-    z = torch.empty_like(x)
+def vector_add(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    t_x = np_to_torch(x)
+    t_y = np_to_torch(y)
+    n = t_x.numel()
+    t_z = torch.empty_like(t_x)
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]),)
-    vector_add_kernel[grid](x, y, z, n, BLOCK_SIZE=1024)
+    vector_add_kernel[grid](t_x, t_y, t_z, n, BLOCK_SIZE=1024)
+    z = torch_to_np(t_z)
     return z
-
-
-def np_vector_add(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    return torch_to_np(torch_vector_add(np_to_torch(x), np_to_torch(y)))
 
 
 def run_vector_add(ns: list[int], runs: int, save_out: bool) -> None:
     for n in ns:
         x = gen_tensor(n)
         y = gen_tensor(n, rng_seed=None)
-        z = np_vector_add(x, y)
+        z = vector_add(x, y)
         for _ in range(0, runs - 1):
-            z = np_vector_add(x, y)
+            z = vector_add(x, y)
         if save_out:
             save_tensor(f"triton_vector_add_{n:08d}", z)
 
