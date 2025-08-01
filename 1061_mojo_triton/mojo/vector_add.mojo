@@ -6,6 +6,7 @@ from sys import exit
 from sys.info import has_accelerator
 
 from np_tensor import np_tensor
+from vector_add_cli import parse_args
 
 
 fn vector_add_kernel(
@@ -83,5 +84,9 @@ def main():
         print("No GPU detected.")
         exit(1)
 
-    ctx = DeviceContext()
-    run_vector_add(ctx, [10], 1, True)
+    try:
+        args = parse_args()
+        ctx = DeviceContext()
+        run_vector_add(ctx, args.n, args.runs, args.save_out)
+    except:
+        exit(1)
