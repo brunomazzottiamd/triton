@@ -6,6 +6,14 @@ import numpy as np
 DEFAULT_RNG_SEED: int = 20250730
 
 
+def empty_tensor(
+    shape: int | tuple[int, ...],
+) -> np.ndarray:
+    if isinstance(shape, int):
+        shape = (shape,)
+    return np.empty(shape, dtype=np.float16)
+
+
 def gen_tensor(
     shape: int | tuple[int, ...],
     rng_seed: int | None = DEFAULT_RNG_SEED,

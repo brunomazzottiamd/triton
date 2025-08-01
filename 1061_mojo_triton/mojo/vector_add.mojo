@@ -5,7 +5,7 @@ from python import PythonObject
 from sys import exit
 from sys.info import has_accelerator
 
-from common import gen_tensor, empty_tensor, save_tensor
+from np_tensor import np_tensor
 
 
 fn vector_add_kernel(
@@ -19,13 +19,13 @@ fn vector_add_kernel(
         z[idx] = x[idx] + y[idx]
 
 
-def np_vector_add(
+def vector_add(
     ctx: DeviceContext,
     x: PythonObject, y: PythonObject,
 ) -> PythonObject:
     # Create output NumPy array.
     n = Int(x.size)
-    z = empty_tensor(n)
+    z = np_tensor().empty_tensor(n)
 
     # Get host pointers from underlying NumPy arrays.
     x_host_ptr = x.ctypes.data.unsafe_get_as_pointer[DType.float16]()
@@ -65,15 +65,16 @@ def run_vector_add(
     ctx: DeviceContext,
     ns: List[Int], runs: Int, save_out: Bool,
 ) -> None:
+    npt = np_tensor()
     for n in ns:
-        x = gen_tensor(n)
-        y = gen_tensor(n, rng_seed=None)
-        z = np_vector_add(ctx, x, y)
+        x = npt.gen_tensor(n)
+        y = npt.gen_tensor(n, rng_seed=None)
+        z = vector_add(ctx, x, y)
         for _ in range(0, runs - 1):
-            z = np_vector_add(ctx, x, y)
+            z = vector_add(ctx, x, y)
         if save_out:
             tensor_name = "mojo_vector_add_" + String(n).rjust(8, "0")
-            save_tensor(tensor_name, z)
+            npt.save_tensor(tensor_name, z)
 
 
 def main():
