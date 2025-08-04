@@ -11,10 +11,10 @@ def main():
     print(String(mojo_array))
 
     # Save Mojo array.
-    npt.save_tensor("mojo_array", mojo_array)
+    npt.save_tensor("mojo___array_ser", mojo_array)
 
     # Load Triton array and compare with Mojo array.
-    triton_array = npt.load_tensor("triton_array")
+    triton_array = npt.load_tensor("triton_array_ser")
     if triton_array is not None:
         print("Loaded Triton array:")
         print(String(triton_array))

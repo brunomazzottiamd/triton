@@ -9,10 +9,10 @@ def main() -> None:
     print(triton_array)
 
     # Save Triton array.
-    save_tensor("triton_array", triton_array)
+    save_tensor("triton_array_ser", triton_array)
 
     # Load Mojo array and compare with Triton array.
-    mojo_array = load_tensor("mojo_array")
+    mojo_array = load_tensor("mojo___array_ser")
     if mojo_array is not None:
         print("Loaded Mojo array:")
         print(mojo_array)
