@@ -37,6 +37,6 @@ pixi run --manifest-path="${mojo_dir}/pixi.toml" \
     &> /dev/null
 
 echo 'Running correctness test...'
-pytest --no-header --verbose "${python_dir}/test_vector_add.py"
+pytest --no-header --no-summary "${python_dir}/test_vector_add.py"
 
 rm --force --recursive "${tensors_dir}/"*vector_add*
