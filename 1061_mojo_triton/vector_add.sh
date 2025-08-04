@@ -27,8 +27,12 @@ n=(
 )
 
 echo 'Running Triton vector add...'
-python "${python_dir}/vector_add.py" "${n[@]}" --save-out --verbose
+python "${python_dir}/vector_add.py" "${n[@]}" --save-out
 
 echo 'Running Mojo vector add...'
 pixi run --manifest-path="${mojo_dir}/pixi.toml" \
-    mojo run "${mojo_dir}/vector_add.mojo" "${n[@]}" --save-out --verbose
+    mojo run "${mojo_dir}/vector_add.mojo" "${n[@]}" --save-out \
+    &> /dev/null
+
+echo 'Running correctness test...'
+pytest --no-header --verbose "${python_dir}/test_vector_add.py"
