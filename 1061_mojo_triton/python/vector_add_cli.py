@@ -12,6 +12,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--save-out", action="store_true", help="save output if this flag is set"
     )
+    parser.add_argument("--verbose", action="store_true", help="enable verbose logging")
     parsed_args = parser.parse_args(args)
     if any(n <= 0 for n in parsed_args.n):
         parser.error("all values for vector size n must be positive integers")

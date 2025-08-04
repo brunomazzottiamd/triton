@@ -9,6 +9,7 @@ struct VectorAddArgs(Copyable, Movable):
     var n: List[Int]
     var runs: Int
     var save_out: Bool
+    var verbose: Bool
 
 
 def parse_args() -> VectorAddArgs:
@@ -21,4 +22,6 @@ def parse_args() -> VectorAddArgs:
     ns = List[Int]()
     for n in parsed_args.n:
         ns.append(Int(n))
-    return VectorAddArgs(ns, Int(parsed_args.runs), Bool(parsed_args.save_out))
+    return VectorAddArgs(
+        ns, Int(parsed_args.runs), Bool(parsed_args.save_out), Bool(parsed_args.verbose)
+    )

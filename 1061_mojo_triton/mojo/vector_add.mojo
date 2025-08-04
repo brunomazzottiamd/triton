@@ -64,16 +64,22 @@ def vector_add(
 
 def run_vector_add(
     ctx: DeviceContext,
-    ns: List[Int], runs: Int, save_out: Bool,
+    ns: List[Int], runs: Int, save_out: Bool, verbose: Bool,
 ) -> None:
     npt = np_tensor()
     for n in ns:
         x = npt.gen_tensor(n)
         y = npt.gen_tensor(n, rng_seed=None)
+        if verbose:
+            print("Running vector add for n=" + String(n) + " (1 / " + String(runs) + ").")
         z = vector_add(ctx, x, y)
-        for _ in range(0, runs - 1):
+        for i in range(2, runs + 1):
+            if verbose:
+                print("Running vector add for n=" + String(n) + " (" + String(i) + " / " + String(runs) + ").")
             z = vector_add(ctx, x, y)
         if save_out:
+            if verbose:
+                print("Saving vector add output for n=" + String(n) + ".")
             tensor_name = "mojo_vector_add_" + String(n).rjust(8, "0")
             npt.save_tensor(tensor_name, z)
 
@@ -87,6 +93,6 @@ def main():
     try:
         args = parse_args()
         ctx = DeviceContext()
-        run_vector_add(ctx, args.n, args.runs, args.save_out)
+        run_vector_add(ctx, args.n, args.runs, args.save_out, args.verbose)
     except:
         exit(1)
