@@ -5,8 +5,7 @@ from python import PythonObject
 from sys import exit
 from sys.info import has_accelerator
 
-from np_tensor import np_tensor
-from vector_add_cli import parse_args
+from python_interop import np_tensor, parse_vector_add_args
 
 
 fn vector_add_kernel(
@@ -91,7 +90,7 @@ def main():
         exit(1)
 
     try:
-        args = parse_args()
+        args = parse_vector_add_args()
         ctx = DeviceContext()
         run_vector_add(ctx, args.n, args.runs, args.save_out, args.verbose)
     except:

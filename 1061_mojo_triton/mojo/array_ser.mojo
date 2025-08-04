@@ -1,4 +1,4 @@
-from np_tensor import np_tensor
+from python_interop import np_tensor
 
 
 def main():
