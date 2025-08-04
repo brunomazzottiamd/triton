@@ -25,10 +25,10 @@ def get_vector_add_n() -> list[int]:
 def test_vector_add(n: int):
     triton_z = load_tensor(f"triton_vector_add_{n:09d}")
     assert triton_z is not None, f"Unable to load Triton output vector for n={n}."
-    assert triton_z.shape == (n,), f"Unexpected shape for Triton vector."
-    assert triton_z.dtype == np.float16, f"Unexpected data type for Triton vector."
+    assert triton_z.shape == (n,), "Unexpected shape for Triton vector."
+    assert triton_z.dtype == np.float16, "Unexpected data type for Triton vector."
 
     mojo_z = load_tensor(f"mojo___vector_add_{n:09d}")
     assert mojo_z is not None, f"Unable to load Mojo output vector for n={n}."
-    assert mojo_z.shape == (n,), f"Unexpected shape for Mojo vector."
-    assert mojo_z.dtype == np.float16, f"Unexpected data type for Mojo vector."
+    assert mojo_z.shape == (n,), "Unexpected shape for Mojo vector."
+    assert mojo_z.dtype == np.float16, "Unexpected data type for Mojo vector."
