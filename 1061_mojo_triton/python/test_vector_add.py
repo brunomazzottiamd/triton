@@ -2,9 +2,6 @@ from glob import glob
 import re
 
 import numpy as np
-
-# from numpy.testing import assert_allclose
-
 import pytest
 
 from np_tensor import tensors_dir, load_tensor
@@ -59,5 +56,11 @@ def test_vector_add(n: int):
         triton_y, mojo_y
     ), "Triton and Mojo y vectors aren't identical."
 
-    # assert_allclose(mojo_z, triton_z, rtol=1e-3, atol=1e-5)
-    # assert np.array_equal(triton_y, mojo_y)
+    np_z = triton_x + triton_y
+    assert np.array_equal(
+        triton_z, mojo_z
+    ), "Triton and Mojo z vectors aren't identical."
+    assert np.array_equal(
+        mojo_z,
+        np_z,
+    ), "Mojo and NumPy z vectors aren't identical."

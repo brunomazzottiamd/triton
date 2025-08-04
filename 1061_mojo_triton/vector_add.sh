@@ -9,11 +9,13 @@ rm --force --recursive "${tensors_dir}/"*vector_add*
 
 n=(
          4096
+         5555
          8192
         16384
         32768
         65536
        131072
+       222222
        262144
        524288
       1048576
@@ -36,3 +38,5 @@ pixi run --manifest-path="${mojo_dir}/pixi.toml" \
 
 echo 'Running correctness test...'
 pytest --no-header --verbose "${python_dir}/test_vector_add.py"
+
+rm --force --recursive "${tensors_dir}/"*vector_add*
