@@ -29,11 +29,11 @@ n=(
 )
 
 echo 'Running Triton vector add...'
-python "${python_dir}/vector_add.py" "${n[@]}" --save-out
+python "${python_dir}/vector_add.py" "${n[@]}" --save-tensors
 
 echo 'Running Mojo vector add...'
 pixi run --manifest-path="${mojo_dir}/pixi.toml" \
-    mojo run "${mojo_dir}/vector_add.mojo" "${n[@]}" --save-out \
+    mojo run "${mojo_dir}/vector_add.mojo" "${n[@]}" --save-tensors \
     &> /dev/null
 
 echo 'Running correctness test...'

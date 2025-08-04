@@ -30,11 +30,11 @@ def vector_add(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return z
 
 
-def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> None:
+def run_vector_add(ns: list[int], runs: int, save_tensors: bool, verbose: bool) -> None:
     for n in ns:
         x = gen_tensor(n)
         y = gen_tensor(n, rng_seed=None)
-        if save_out:
+        if save_tensors:
             if verbose:
                 print(f"Saving vector add input for n={n}.")
             save_tensor(f"triton_vector_add_x_{n:09d}", x)
@@ -46,7 +46,7 @@ def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> N
             if verbose:
                 print(f"Running vector add for n={n} ({i} / {runs}).")
             z = vector_add(x, y)
-        if save_out:
+        if save_tensors:
             if verbose:
                 print(f"Saving vector add output for n={n}.")
             save_tensor(f"triton_vector_add_z_{n:09d}", z)
@@ -54,7 +54,7 @@ def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> N
 
 def main() -> None:
     args = parse_args()
-    run_vector_add(args.n, args.runs, args.save_out, args.verbose)
+    run_vector_add(args.n, args.runs, args.save_tensors, args.verbose)
 
 
 if __name__ == "__main__":

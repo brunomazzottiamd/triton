@@ -10,7 +10,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--runs", type=int, default=1, help="number of runs (default: 1)"
     )
     parser.add_argument(
-        "--save-out", action="store_true", help="save output if this flag is set"
+        "--save-tensors", action="store_true", help="save tensors if this flag is set"
     )
     parser.add_argument("--verbose", action="store_true", help="enable verbose logging")
     parsed_args = parser.parse_args(args)

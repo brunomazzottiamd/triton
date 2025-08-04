@@ -26,7 +26,7 @@ def parse_args(module_name: String) -> PythonObject:
 struct VectorAddArgs(Copyable, Movable):
     var n: List[Int]
     var runs: Int
-    var save_out: Bool
+    var save_tensors: Bool
     var verbose: Bool
 
 
@@ -36,5 +36,5 @@ def parse_vector_add_args() -> VectorAddArgs:
     for n in args.n:
         ns.append(Int(n))
     return VectorAddArgs(
-        ns, Int(args.runs), Bool(args.save_out), Bool(args.verbose)
+        ns, Int(args.runs), Bool(args.save_tensors), Bool(args.verbose)
     )
