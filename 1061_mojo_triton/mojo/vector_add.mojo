@@ -80,7 +80,7 @@ def run_vector_add(
         if save_out:
             if verbose:
                 print("Saving vector add output for n=" + String(n) + ".")
-            tensor_name = "mojo_vector_add_" + String(n).rjust(8, "0")
+            tensor_name = "mojo___vector_add_" + String(n).rjust(9, "0")
             npt.save_tensor(tensor_name, z)
 
 

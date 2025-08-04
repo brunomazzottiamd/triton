@@ -44,7 +44,7 @@ def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> N
         if save_out:
             if verbose:
                 print(f"Saving vector add output for n={n}.")
-            save_tensor(f"triton_vector_add_{n:08d}", z)
+            save_tensor(f"triton_vector_add_{n:09d}", z)
 
 
 def main() -> None:
