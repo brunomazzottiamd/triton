@@ -69,6 +69,13 @@ def run_vector_add(
     for n in ns:
         x = npt.gen_tensor(n)
         y = npt.gen_tensor(n, rng_seed=None)
+        if save_out:
+            if verbose:
+                print("Saving vector add input for n=" + String(n) + ".")
+            tensor_name = "mojo___vector_add_x_" + String(n).rjust(9, "0")
+            npt.save_tensor(tensor_name, x)
+            tensor_name = "mojo___vector_add_y_" + String(n).rjust(9, "0")
+            npt.save_tensor(tensor_name, y)
         if verbose:
             print("Running vector add for n=" + String(n) + " (1 / " + String(runs) + ").")
         z = vector_add(ctx, x, y)
@@ -79,7 +86,7 @@ def run_vector_add(
         if save_out:
             if verbose:
                 print("Saving vector add output for n=" + String(n) + ".")
-            tensor_name = "mojo___vector_add_" + String(n).rjust(9, "0")
+            tensor_name = "mojo___vector_add_z_" + String(n).rjust(9, "0")
             npt.save_tensor(tensor_name, z)
 
 

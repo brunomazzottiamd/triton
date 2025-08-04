@@ -34,6 +34,11 @@ def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> N
     for n in ns:
         x = gen_tensor(n)
         y = gen_tensor(n, rng_seed=None)
+        if save_out:
+            if verbose:
+                print(f"Saving vector add input for n={n}.")
+            save_tensor(f"triton_vector_add_x_{n:09d}", x)
+            save_tensor(f"triton_vector_add_y_{n:09d}", y)
         if verbose:
             print(f"Running vector add for n={n} (1 / {runs}).")
         z = vector_add(x, y)
@@ -44,7 +49,7 @@ def run_vector_add(ns: list[int], runs: int, save_out: bool, verbose: bool) -> N
         if save_out:
             if verbose:
                 print(f"Saving vector add output for n={n}.")
-            save_tensor(f"triton_vector_add_{n:09d}", z)
+            save_tensor(f"triton_vector_add_z_{n:09d}", z)
 
 
 def main() -> None:
