@@ -58,6 +58,11 @@ run_mojo() {
         mojo run "${MOJO_DIR}/${mojo_program}.mojo" "${@}"
 }
 
+run_test() {
+    local test="${1}"
+    pytest --no-header --no-summary "${PYTHON_DIR}/test_${test}.py"
+}
+
 ### Kernel profiling functions
 
 profile_kernel() {

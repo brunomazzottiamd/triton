@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-python_dir="${script_dir}/python"
-mojo_dir="${script_dir}/mojo"
-tensors_dir="${script_dir}/tensors"
+source "${script_dir}/common.sh"
 
-rm --force --recursive "${tensors_dir}/"*vector_add*
+clean_tensors 'vector_add'
 
 n=(
          4096
@@ -29,14 +27,12 @@ n=(
 )
 
 echo 'Running Triton vector add...'
-python "${python_dir}/vector_add.py" "${n[@]}" --save-tensors
+run_python 'vector_add' "${n[@]}" --save-tensors
 
 echo 'Running Mojo vector add...'
-pixi run --manifest-path="${mojo_dir}/pixi.toml" \
-    mojo run "${mojo_dir}/vector_add.mojo" "${n[@]}" --save-tensors \
-    &> /dev/null
+run_mojo 'vector_add' "${n[@]}" --save-tensors > /dev/null
 
 echo 'Running correctness test...'
-pytest --no-header --no-summary "${python_dir}/test_vector_add.py"
+run_test 'vector_add'
 
-rm --force --recursive "${tensors_dir}/"*vector_add*
+clean_tensors 'vector_add'
