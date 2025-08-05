@@ -5,7 +5,7 @@ source "${script_dir}/common.sh"
 
 clean_tensors 'vector_add'
 
-n=(
+ns=(
          4096
          5555
          8192
@@ -27,12 +27,22 @@ n=(
 )
 
 echo 'Running Triton vector add...'
-run_python 'vector_add' "${n[@]}" --save-tensors
+run_python 'vector_add' "${ns[@]}" --save-tensors
 
 echo 'Running Mojo vector add...'
-run_mojo 'vector_add' "${n[@]}" --save-tensors > /dev/null
+run_mojo 'vector_add' "${ns[@]}" --save-tensors > /dev/null
 
 echo 'Running correctness test...'
 run_test 'vector_add'
 
 clean_tensors 'vector_add'
+clean_profiling 'vector_add'
+
+echo 'Profiling vector add...'
+for n in "${ns[@]}"; do
+    formatted_n=$(printf '%09d' "${n}")
+    echo "Profiling Triton implementation for n=${n}..."
+    profile_python 'vector_add' 'vector_add_kernel' "vector_add/${formatted_n}" "${n}"
+    echo "Profiling Mojo implementation for n=${n}..."
+    profile_mojo 'vector_add' 'vector_add_kernel' "vector_add/${formatted_n}" "${n}"
+done

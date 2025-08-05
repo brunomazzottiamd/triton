@@ -1,2 +1,4 @@
 *~
 *.npz
+tensors
+profiling

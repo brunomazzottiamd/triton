@@ -45,6 +45,12 @@ clean_tensors() {
     remove "${TENSORS_DIR}/"*"${tensor_pattern}"*
 }
 
+clean_profiling() {
+    local profiling_pattern="${1}"
+    remove "${PROFILING_DIR}/python/"*"${profiling_pattern}"*
+    remove "${PROFILING_DIR}/mojo/"*"${profiling_pattern}"*
+}
+
 run_python() {
     local python_program="${1}"
     shift
@@ -73,7 +79,6 @@ profile_kernel() {
     local output_csv_file="${1}"
     shift
     echo 'kernel_name,duration_ns' > "${output_csv_file}"
-    # echo "Running [ ${num_executions} ] rocprof executions:"
     for ((i = 1; i <= num_executions; ++i)); do
         show_progress "${i}" "${num_executions}"
         rocprof --stats "${@}" &> /dev/null
@@ -114,7 +119,6 @@ df = (
     .reset_index()
 )
 df.to_csv("${output_csv_file}", index=False)
-# print(df.to_markdown(index=False))
 EOF
 }
 
@@ -136,7 +140,7 @@ profile_python() {
     shift
     local kernel_regex="${1}"
     shift
-    local output_dir="${1}/python"
+    local output_dir="python/${1}"
     shift
     profile "${kernel_regex}" "${output_dir}" \
         python "${PYTHON_DIR}/${python_program}.py" "${@}"
@@ -147,7 +151,7 @@ profile_mojo() {
     shift
     local kernel_regex="${1}"
     shift
-    local output_dir="${1}/mojo"
+    local output_dir="mojo/${1}"
     shift
     profile "${kernel_regex}" "${output_dir}" \
         pixi run --manifest-path="${MOJO_DIR}/pixi.toml" \
