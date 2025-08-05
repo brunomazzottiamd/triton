@@ -3,7 +3,7 @@
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 source "${script_dir}/common.sh"
 
-clean_tensors 'vector_add'
+clean_artifacts 'vector_add'
 
 ns=(
          4096
@@ -36,7 +36,6 @@ echo 'Running correctness test...'
 run_test 'vector_add'
 
 clean_tensors 'vector_add'
-clean_profiling 'vector_add'
 
 echo 'Profiling vector add...'
 for n in "${ns[@]}"; do

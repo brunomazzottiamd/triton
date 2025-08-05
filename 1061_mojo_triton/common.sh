@@ -51,6 +51,12 @@ clean_profiling() {
     remove "${PROFILING_DIR}/mojo/"*"${profiling_pattern}"*
 }
 
+clean_artifacts() {
+    local pattern="${1}"
+    clean_tensors "${pattern}"
+    clean_profiling "${pattern}"
+}
+
 run_python() {
     local python_program="${1}"
     shift
