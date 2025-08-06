@@ -13,8 +13,8 @@ def vector_add_kernel(x_ptr, y_ptr, z_ptr, n, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offs < n
-    x = tl.load(x_ptr + offs, mask=mask)
-    y = tl.load(y_ptr + offs, mask=mask)
+    x = tl.load(x_ptr + offs, mask=mask, cache_modifier=".cg")
+    y = tl.load(y_ptr + offs, mask=mask, cache_modifier=".cg")
     z = x + y
     tl.store(z_ptr + offs, z, mask=mask)
 
