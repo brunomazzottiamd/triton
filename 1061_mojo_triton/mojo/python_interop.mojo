@@ -38,3 +38,21 @@ def parse_vector_add_args() -> VectorAddArgs:
     return VectorAddArgs(
         ns, Int(args.runs), Bool(args.save_tensors), Bool(args.verbose)
     )
+
+
+@fieldwise_init
+struct SoftmaxArgs(Copyable, Movable):
+    var shape: List[Tuple[Int, Int]]
+    var runs: Int
+    var save_tensors: Bool
+    var verbose: Bool
+
+
+def parse_softmax_args() -> SoftmaxArgs:
+    args = parse_args("softmax_cli")
+    shapes = List[Tuple[Int, Int]]()
+    for shape in args.shape:
+        shapes.append((Int(shape[0]), Int(shape[1])))
+    return SoftmaxArgs(
+        shapes, Int(args.runs), Bool(args.save_tensors), Bool(args.verbose)
+    )
