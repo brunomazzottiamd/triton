@@ -13,14 +13,25 @@ MOJO_TENSOR_PREFIX: str = "mojo___"
 def get_test_shapes(tensor_name: str) -> list[int] | list[tuple[int, ...]]:
     split_pattern = re.compile(r"[_\.]")
     root_dir = np_tensor.tensors_dir()
+    underscores_in_tensor_name = tensor_name.count("_")
     triton_shapes = {
-        tuple(int(shape_dim) for shape_dim in split_pattern.split(triton_file)[4:-1])
+        tuple(
+            int(shape_dim)
+            for shape_dim in split_pattern.split(triton_file)[
+                3 + underscores_in_tensor_name : -1
+            ]
+        )
         for triton_file in glob(
             f"{TRITON_TENSOR_PREFIX}{tensor_name}*.npz", root_dir=root_dir
         )
     }
     mojo_shapes = {
-        tuple(int(shape_dim) for shape_dim in split_pattern.split(mojo_file)[6:-1])
+        tuple(
+            int(shape_dim)
+            for shape_dim in split_pattern.split(mojo_file)[
+                5 + underscores_in_tensor_name : -1
+            ]
+        )
         for mojo_file in glob(
             f"{MOJO_TENSOR_PREFIX}{tensor_name}*.npz", root_dir=root_dir
         )
