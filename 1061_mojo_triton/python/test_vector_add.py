@@ -1,37 +1,19 @@
-from glob import glob
-import re
-
 import numpy as np
 import pytest
 
-from np_tensor import tensors_dir, load_tensor
+from test_common import get_test_shapes, load_triton_tensor, load_mojo_tensor
 
 
-def get_vector_add_n() -> list[int]:
-    split_pattern = re.compile(r"[_\.]")
-    root_dir = tensors_dir()
-    triton_ns = {
-        int(split_pattern.split(triton_out_file)[4])
-        for triton_out_file in glob("triton_vector_add_*.npz", root_dir=root_dir)
-    }
-    mojo_ns = {
-        int(split_pattern.split(triton_out_file)[6])
-        for triton_out_file in glob("mojo___vector_add_*.npz", root_dir=root_dir)
-    }
-    return sorted(triton_ns & mojo_ns)
-
-
-def load(tensor_name: str) -> np.ndarray:
-    x = load_tensor(tensor_name)
-    assert x is not None, f"Unable to load tensor '{tensor_name}'."
-    return x
-
-
-@pytest.mark.parametrize("n", get_vector_add_n())
+@pytest.mark.parametrize("n", get_test_shapes("vector_add"))
 def test_vector_add(n: int):
-    triton_x = load(f"triton_vector_add_x_{n:09d}")
-    triton_y = load(f"triton_vector_add_y_{n:09d}")
-    triton_z = load(f"triton_vector_add_z_{n:09d}")
+    formatted_n = f"{n:09d}"
+    x_name = f"vector_add_x_{formatted_n}"
+    y_name = f"vector_add_y_{formatted_n}"
+    z_name = f"vector_add_z_{formatted_n}"
+
+    triton_x = load_triton_tensor(x_name)
+    triton_y = load_triton_tensor(y_name)
+    triton_z = load_triton_tensor(z_name)
     assert (
         triton_x.shape == triton_y.shape == triton_z.shape == (n,)
     ), "Unexpected shape for Triton vector."
@@ -39,9 +21,9 @@ def test_vector_add(n: int):
         triton_x.dtype == triton_y.dtype == triton_z.dtype == np.float16
     ), "Unexpected data type for Triton vector."
 
-    mojo_x = load(f"mojo___vector_add_x_{n:09d}")
-    mojo_y = load(f"mojo___vector_add_y_{n:09d}")
-    mojo_z = load(f"mojo___vector_add_z_{n:09d}")
+    mojo_x = load_mojo_tensor(x_name)
+    mojo_y = load_mojo_tensor(y_name)
+    mojo_z = load_mojo_tensor(z_name)
     assert (
         mojo_x.shape == mojo_y.shape == mojo_z.shape == (n,)
     ), "Unexpected shape for Mojo vector."
@@ -57,6 +39,7 @@ def test_vector_add(n: int):
     ), "Triton and Mojo y vectors aren't identical."
 
     np_z = triton_x + triton_y
+
     assert np.array_equal(
         triton_z, mojo_z
     ), "Triton and Mojo z vectors aren't identical."
