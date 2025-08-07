@@ -1,3 +1,7 @@
+# Based on Mojo "Get started with GPU programming" tutorial:
+# https://docs.modular.com/mojo/manual/gpu/intro-tutorial/
+
+
 from gpu.host import DeviceContext
 from gpu.id import block_dim, block_idx, thread_idx
 from math import ceildiv

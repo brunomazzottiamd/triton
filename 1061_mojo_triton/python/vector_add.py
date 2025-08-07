@@ -1,3 +1,7 @@
+# Based on Triton "Vector Addition" tutorial:
+# https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
+
+
 import numpy as np
 import torch
 import triton

@@ -1,3 +1,7 @@
+# Based on AITER softmax kernel:
+# https://github.com/ROCm/aiter/blob/main/aiter/ops/triton/softmax.py
+
+
 import numpy as np
 import torch
 import triton
