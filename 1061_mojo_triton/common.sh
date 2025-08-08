@@ -90,6 +90,7 @@ profile_v1() {
 }
 
 # Get kernel execution time, in ns, with rocprofv2.
+# FIXME: `rocprofv2` is messing with the progress bar when profiling Mojo kernels.
 profile_v2() {
     local regex="${1}"
     shift
@@ -97,6 +98,19 @@ profile_v2() {
         | grep "${regex}" \
         | csvcut --columns=14-16 \
         | awk -F',' '{print $1 "," $3 - $2}'
+}
+
+# Get kernel execution time, in ns, with rocprofv3.
+profile_v3() {
+    local regex="${1}"
+    shift
+    rocprofv3 --kernel-trace --output-format csv --output-file results -- "${@}" &> /dev/null
+    local data
+    data=$(grep "${regex}" results_kernel_trace.csv \
+        | csvcut --columns=7,9-10 \
+	| awk -F',' '{print $1 "," $3 - $2}')
+    remove results_*
+    echo "${data}"
 }
 
 profile_kernel() {
@@ -111,6 +125,7 @@ profile_kernel() {
         show_progress "${i}" "${num_executions}"
         profile_v1 "${regex}" "${@}" >> "${output_csv_file}"
         # profile_v2 "${regex}" "${@}" >> "${output_csv_file}"
+        # profile_v3 "${regex}" "${@}" >> "${output_csv_file}"
     done
     echo
 }
