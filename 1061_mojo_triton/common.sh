@@ -77,6 +77,28 @@ run_test() {
 
 ### Kernel profiling functions
 
+# Get kernel execution time, in ns, with rocprof (v1).
+profile_v1() {
+    local regex="${1}"
+    shift
+    rocprof --stats "${@}" &> /dev/null
+    local data
+    data=$(grep "${regex}" results.stats.csv \
+        | csvcut --columns=1,3)
+    remove results.*
+    echo "${data}"
+}
+
+# Get kernel execution time, in ns, with rocprofv2.
+profile_v2() {
+    local regex="${1}"
+    shift
+    rocprofv2 --plugin file "${@}" \
+        | grep "${regex}" \
+        | csvcut --columns=14-16 \
+        | awk -F',' '{print $1 "," $3 - $2}'
+}
+
 profile_kernel() {
     local num_executions="${1}"
     shift
@@ -87,11 +109,8 @@ profile_kernel() {
     echo 'kernel_name,duration_ns' > "${output_csv_file}"
     for ((i = 1; i <= num_executions; ++i)); do
         show_progress "${i}" "${num_executions}"
-        rocprof --stats "${@}" &> /dev/null
-        grep "${regex}" results.stats.csv \
-            | csvcut --columns=1,3 \
-            >> "${output_csv_file}"
-        remove results.*
+        profile_v1 "${regex}" "${@}" >> "${output_csv_file}"
+        # profile_v2 "${regex}" "${@}" >> "${output_csv_file}"
     done
     echo
 }
