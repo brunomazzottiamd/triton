@@ -1,7 +1,12 @@
+from buffer import NDBuffer
 from gpu.host import DeviceContext
 from python import Python, PythonObject
+from runtime.asyncrt import DeviceContextPtr
 from sys import exit
 from sys.info import has_accelerator
+from utils import IndexList
+
+import softmax_ref
 
 from python_interop import np_tensor, parse_softmax_args
 
@@ -10,8 +15,11 @@ def softmax(
     ctx: DeviceContext,
     x: PythonObject,
 ) -> PythonObject:
-    # Create output NumPy array.
     shape = x.shape
+    m = Int(shape[0])
+    n = Int(shape[1])
+
+    # Create output NumPy array.
     y = np_tensor().empty_tensor(shape)
 
     # Get host pointers from underlying NumPy arrays.
@@ -19,7 +27,7 @@ def softmax(
     y_host_ptr = y.ctypes.data.unsafe_get_as_pointer[DType.float16]()
 
     # Create device buffers.
-    buffer_size = Int(shape[0]) * Int(shape[1])
+    buffer_size = m * n
     x_device_buf = ctx.enqueue_create_buffer[DType.float16](buffer_size)
     y_device_buf = ctx.enqueue_create_buffer[DType.float16](buffer_size)
 
@@ -27,7 +35,13 @@ def softmax(
     ctx.enqueue_copy(dst_buf=x_device_buf, src_ptr=x_host_ptr)
 
     # Invoke kernel.
-    # TODO: Write Mojo kernel and launch it here!
+    mojo_shape = IndexList[size=2, element_type=DType.int32]((m, n))
+    input = NDBuffer(ptr=x_device_buf.unsafe_ptr(), dynamic_shape=mojo_shape)
+    output = NDBuffer(ptr=y_device_buf.unsafe_ptr(), dynamic_shape=mojo_shape)
+    # TODO: How to deduce simd_width?
+    softmax_ref.softmax[simd_width=1, target="gpu"](
+        input, output, axis=1, context=DeviceContextPtr(ctx)
+    )
 
     # Copy from device to host.
     ctx.enqueue_copy(dst_ptr=y_host_ptr, src_buf=y_device_buf)
