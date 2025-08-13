@@ -2,6 +2,8 @@
 # https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
 
 
+import typing
+
 import numpy as np
 import torch
 import triton
@@ -12,6 +14,7 @@ from torch_interop import np_to_torch, torch_to_np
 from vector_add_cli import parse_args
 
 
+@typing.no_type_check
 @triton.jit
 def vector_add_kernel(x_ptr, y_ptr, z_ptr, n, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)

@@ -2,6 +2,8 @@
 # https://github.com/ROCm/aiter/blob/main/aiter/ops/triton/softmax.py
 
 
+import typing
+
 import numpy as np
 import torch
 import triton
@@ -12,6 +14,7 @@ from torch_interop import np_to_torch, torch_to_np
 from softmax_cli import parse_args
 
 
+@typing.no_type_check
 @triton.jit
 def softmax_kernel(
     output_ptr,
