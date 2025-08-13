@@ -72,7 +72,7 @@ run_mojo() {
 
 run_test() {
     local test="${1}"
-    pytest --no-header --no-summary "${PYTHON_DIR}/test_${test}.py"
+    pytest --no-header --no-summary "${PYTHON_DIR}/test_${test}.py" 2> /dev/null
 }
 
 ### Kernel profiling functions
