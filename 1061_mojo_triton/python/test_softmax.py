@@ -41,7 +41,9 @@ def test_softmax(m: int, n: int):
     assert np.allclose(
         triton_y, np_y, atol=atol, rtol=rtol
     ), "Triton and NumPy y matrices don't match."
-    # TODO: Check Mojo output when Mojo kernel is implemented!
-    # assert np.allclose(
-    #     np_y, mojo_y, atol=atol, rtol=rtol
-    # ), "NumPy and Mojo y matrices don't match."
+    assert np.allclose(
+        np_y, mojo_y, atol=atol, rtol=rtol
+    ), "NumPy and Mojo y matrices don't match."
+    assert np.allclose(
+        mojo_y, triton_y, atol=atol, rtol=rtol
+    ), "Mojo y and Triton y matrices don't match."

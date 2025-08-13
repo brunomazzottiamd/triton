@@ -6,6 +6,7 @@ source "${script_dir}/common.sh"
 clean_artifacts softmax
 
 shapes=(
+    ' 256,  128'
     '4096, 8192'
     '8192, 8192'
 )
