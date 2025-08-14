@@ -21,6 +21,13 @@ def profiling_dir() -> str:
     return os.path.join(os.getcwd(), "profiling")
 
 
+def profiling_results_dir() -> str:
+    results_dir = os.path.join(os.getcwd(), "profiling_results")
+    if not os.path.exists(results_dir):
+        os.mkdir(results_dir)
+    return results_dir
+
+
 def list_lang_prof_stats_files(lang: str, kernel: str) -> dict[tuple[int, ...], str]:
     prof_dir = os.path.join(profiling_dir(), lang, kernel)
     glob_pattern = os.path.join(prof_dir, "*", "prof_stats.csv")
@@ -118,11 +125,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--output",
-        help="output CSV file, defaults to profiling_dir / kernel_agg.csv",
+        help="output CSV file, defaults to profiling_results_dir/kernel.csv",
     )
     args = parser.parse_args()
     if args.output is None:
-        args.output = os.path.join(profiling_dir(), f"{args.kernel}_agg.csv")
+        args.output = os.path.join(profiling_results_dir(), f"{args.kernel}.csv")
     return args
 
 
