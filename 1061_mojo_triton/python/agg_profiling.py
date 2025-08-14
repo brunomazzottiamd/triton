@@ -110,7 +110,11 @@ def write_perf_to_csv_file(
     ]
     csv_data = prof_stats_times_to_csv_data(shape_to_prof_stats_times)
     with open(csv_file, mode="w", newline="") as csv_fd:
-        csv_writer = csv.DictWriter(csv_fd, fieldnames=csv_header)
+        csv_writer = csv.DictWriter(
+            csv_fd,
+            fieldnames=csv_header,
+            lineterminator="\r\n" if os.name == "nt" else "\n",
+        )
         csv_writer.writeheader()
         csv_writer.writerows(csv_data)
 
