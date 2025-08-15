@@ -38,8 +38,7 @@ def softmax(
     mojo_shape = IndexList[size=2, element_type=DType.int32]((m, n))
     input = NDBuffer(ptr=x_device_buf.unsafe_ptr(), dynamic_shape=mojo_shape)
     output = NDBuffer(ptr=y_device_buf.unsafe_ptr(), dynamic_shape=mojo_shape)
-    # TODO: How to deduce simd_width? Try simd_width in {2, 4, 8}.
-    softmax_ref.softmax[simd_width=1, target="gpu"](
+    softmax_ref.softmax[simd_width=4, target="gpu"](
         input, output, axis=1, context=DeviceContextPtr(ctx)
     )
 
